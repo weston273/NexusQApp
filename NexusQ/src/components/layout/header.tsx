@@ -33,14 +33,14 @@ export function Header({
     <TooltipProvider>
       <header className="sticky top-0 z-40 w-full glass h-16 px-4 md:px-6 flex items-center justify-between transition-all duration-300">
         {/* Left section: Sidebar Toggle & Status */}
-      <Button
+      {/* <Button
         variant="ghost"
         size="icon"
         onClick={onToggleSidebar}
         className="-ml-2 md:ml-0"
       >
         <Menu className="h-5 w-5" />
-      </Button>
+      </Button> */}
         <div className="flex items-center gap-2 md:gap-4 overflow-hidden flex-1 lg:flex-none">
           {/* <SidebarTrigger className="-ml-2 md:ml-0" /> */}
           <Separator orientation="vertical" className="h-4 hidden md:block" />
