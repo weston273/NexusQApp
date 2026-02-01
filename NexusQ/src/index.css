@@ -50,8 +50,8 @@
     --status-warning: 38 92% 50%;
     --status-error: 0 84% 60%;
 
-    /* Sidebar - Distinct but restrained */
-    --sidebar-background: 210 20% 96%; /* Slightly darker than main bg */
+    /* sidebar */
+    --sidebar-background: 210 20% 96%; 
     --sidebar-foreground: 215 25% 27%;
     --sidebar-primary: 221 83% 53%;
     --sidebar-primary-foreground: 210 20% 98%;
@@ -127,7 +127,7 @@
 
   * {
     @apply border-border;
-  }
+  } 
 
   body {
     @apply bg-background text-foreground antialiased;
@@ -150,4 +150,12 @@
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* logo css */
+.sidebar-logo {
+  height: 500px;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
 }
