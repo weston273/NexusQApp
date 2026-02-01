@@ -1,7 +1,9 @@
 import { Bell, Search, Activity, ChevronDown, User, Settings, LogOut, Command } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+// import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+// import { SidebarTrigger } from '@/components/ui/sidebar'
+import { Separator } from '@/components/ui/separator'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,20 +19,39 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { Input } from '@/components/ui/input'
+import { Menu } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 
-export function Header() {
+
+export function Header({
+  onToggleSidebar,
+}: {
+  onToggleSidebar: () => void
+}) {
+ 
   return (
     <TooltipProvider>
-      <header className="sticky top-0 z-50 w-full glass h-16 px-4 md:px-6 flex items-center justify-between transition-all duration-300">
-        {/* Left section: Branding & Status */}
-        <div className="flex items-center gap-3 md:gap-4 overflow-hidden">
+      <header className="sticky top-0 z-40 w-full glass h-16 px-4 md:px-6 flex items-center justify-between transition-all duration-300">
+        {/* Left section: Sidebar Toggle & Status */}
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={onToggleSidebar}
+        className="-ml-2 md:ml-0"
+      >
+        <Menu className="h-5 w-5" />
+      </Button>
+        <div className="flex items-center gap-2 md:gap-4 overflow-hidden flex-1 lg:flex-none">
+          {/* <SidebarTrigger className="-ml-2 md:ml-0" /> */}
+          <Separator orientation="vertical" className="h-4 hidden md:block" />
+          
           <div className="flex flex-col justify-center overflow-hidden">
             <h2 className="text-sm font-bold tracking-tight truncate">
               Operations
             </h2>
             <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
               <span className="status-dot status-dot-success shrink-0" />
-              <span className="uppercase tracking-widest font-semibold truncate">
+              <span className="uppercase tracking-widest font-semibold truncate hidden xs:block">
                 System Active
               </span>
             </div>
@@ -38,14 +59,14 @@ export function Header() {
 
           <Badge
             variant="outline"
-            className="hidden sm:inline-flex text-[9px] font-bold uppercase tracking-widest h-5 px-1.5 bg-background/50 border-border/50"
+            className="hidden sm:inline-flex text-[9px] font-bold uppercase tracking-widest h-5 px-1.5 bg-background/50 border-border/50 shrink-0"
           >
             Live
           </Badge>
         </div>
 
         {/* Center section: Search (Desktop only) */}
-        <div className="hidden lg:flex items-center max-w-md w-full mx-4">
+        <div className="hidden lg:flex items-center max-w-sm xl:max-w-md w-full mx-8">
           <div className="relative w-full">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
@@ -60,17 +81,31 @@ export function Header() {
         </div>
 
         {/* Right section: Actions & User */}
-        <div className="flex items-center gap-1 md:gap-2">
+        <div className="flex items-center gap-1 md:gap-2 shrink-0">
           {/* Action Buttons (Responsive) */}
-          <div className="flex items-center gap-1 mr-1 md:mr-2">
+          <div className="flex items-center gap-1">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted/50 hidden sm:flex"
+                  className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted/50 lg:hidden"
                 >
-                  <Search className="h-4 w-4 lg:hidden" />
+                  <Search className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p>Search</p>
+              </TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted/50 hidden md:flex"
+                >
                   <Activity className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>

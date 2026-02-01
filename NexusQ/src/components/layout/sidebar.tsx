@@ -21,8 +21,14 @@ const navItems = [
   { icon: Activity, label: 'System Health', path: '/health' },
 ];
 
-export function Sidebar() {
-  const [isOpen, setIsOpen] = React.useState(true);
+export function Sidebar({
+  isOpen,
+  setIsOpen,
+}: {
+  isOpen: boolean;
+  setIsOpen: React.Dispatch<React.SetStateAction<boolean>>;
+}) {
+  
 
   return (
     <>
