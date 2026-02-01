@@ -31,7 +31,11 @@ export function Header({
  
   return (
     <TooltipProvider>
-      <header className="sticky top-0 z-40 w-full glass h-16 px-4 md:px-6 flex items-center justify-between transition-all duration-300">
+     <header className="  sticky top-0 z-40 w-full glass h-16
+        pl-14 md:px-6 px-4
+        flex items-center justify-between
+        transition-all duration-300
+      ">
         {/* Left section: Sidebar Toggle & Status */}
       {/* <Button
         variant="ghost"
