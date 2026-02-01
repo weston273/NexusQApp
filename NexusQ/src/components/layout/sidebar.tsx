@@ -43,7 +43,7 @@ export function Sidebar() {
         )}
       >
         {/* Logo Area */}
-        <div className="flex h-16 items-center border-b px-6">
+        <div className="flex h-16 items-center justify-start border-b px-6">
           <img
             src={Logo}
             alt="NexusQ Logo"

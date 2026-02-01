@@ -154,8 +154,10 @@
 
 /* logo css */
 .sidebar-logo {
-  height: 500px;
+  max-height : 200px;
+  margin-top : 5%;
   width: auto;
-  max-width: 100%;
   object-fit: contain;
+  margin-left: -20%;
+
 }
