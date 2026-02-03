@@ -13,7 +13,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/pipeline" element={<Pipeline />} />
-          {/* <Route path="/intake" element={<LeadIntake />} /> */}
+          <Route path="/intake" element={<LeadIntake />} />
           <Route path="/health" element={<Health />} />
           <Route path="/settings" element={<div className="p-8 text-center text-muted-foreground">Settings module under development.</div>} />
         </Routes>

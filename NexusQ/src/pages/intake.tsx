@@ -55,6 +55,31 @@ export function LeadIntake() {
     if (step === 'contact') setStep('details');
   };
 
+  async function submitLead() {
+  try {
+    await fetch("https://n8n-k7j4.onrender.com/webhook-test/lead-webhook", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        source: "nexusq-website",
+        service: formData.service,
+        urgency: formData.urgency,
+        address: formData.address,
+        name: formData.name,
+        phone: formData.phone,
+      }),
+    });
+
+    setStep("success");
+  } catch (error) {
+    console.error("Failed to submit lead", error);
+    alert("Something went wrong. Please try again.");
+  }
+}
+
+
   return (
     <div className="min-h-[80vh] flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-xl space-y-8 animate-fade-in-up">
@@ -199,7 +224,7 @@ export function LeadIntake() {
                 <Button 
                   className="flex-1 font-bold gap-2 h-12" 
                   disabled={!formData.name || !formData.phone}
-                  onClick={() => nextStep('contact')}
+                  onClick={submitLead}
                 >
                   Request Service <CheckCircle2 className="h-4 w-4" />
                 </Button>
