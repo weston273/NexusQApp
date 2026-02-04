@@ -1,110 +1,121 @@
-import { 
-  Users, 
-  MessageSquare, 
-  TrendingUp, 
-  Clock, 
+import { useLeads } from "@/hooks/useLeads";
+
+import {
+  Users,
+  MessageSquare,
+  TrendingUp,
+  Clock,
   ArrowRight,
   PhoneCall,
-  CalendarCheck
-} from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
-import { 
-  AreaChart, 
-  Area, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer, 
-  BarChart, 
-  Bar, 
-  PieChart, 
-  Pie, 
-  Cell 
-} from 'recharts';
-
-const stats = [
-  { label: 'Leads Captured', value: '42', change: '+12%', icon: Users },
-  { label: 'Avg. Response', value: '< 2m', change: '-15%', icon: Clock },
-  { label: 'Conversion', value: '68%', change: '+5%', icon: TrendingUp },
-  { label: 'Open Intents', value: '18', change: 'Stable', icon: MessageSquare },
-];
-
-const recentActivity = [
-  { id: 1, type: 'lead', user: 'James Wilson', action: 'Requested Quote', time: '2m ago', status: 'Qualifying' },
-  { id: 2, type: 'booking', user: 'Sarah Miller', action: 'Booked Service', time: '15m ago', status: 'Confirmed' },
-  { id: 3, type: 'followup', user: 'Mike Brown', action: 'Pending Follow-up', time: '1h ago', status: 'Urgent' },
-];
+  CalendarCheck,
+} from "lucide-react";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+} from "recharts";
 
 const leadTrend = [
-  { day: 'Mon', leads: 8 },
-  { day: 'Tue', leads: 12 },
-  { day: 'Wed', leads: 10 },
-  { day: 'Thu', leads: 15 },
-  { day: 'Fri', leads: 20 },
-  { day: 'Sat', leads: 18 },
-  { day: 'Sun', leads: 22 },
+  { day: "Mon", leads: 8 },
+  { day: "Tue", leads: 12 },
+  { day: "Wed", leads: 10 },
+  { day: "Thu", leads: 15 },
+  { day: "Fri", leads: 20 },
+  { day: "Sat", leads: 18 },
+  { day: "Sun", leads: 22 },
 ];
 
 const funnelData = [
-  { stage: 'Leads', value: 42 },
-  { stage: 'Contacted', value: 35 },
-  { stage: 'Qualified', value: 24 },
-  { stage: 'Converted', value: 17 },
+  { stage: "Leads", value: 42 },
+  { stage: "Contacted", value: 35 },
+  { stage: "Qualified", value: 24 },
+  { stage: "Converted", value: 17 },
 ];
 
 const responseData = [
-  { period: 'Yesterday', time: 3.2 },
-  { period: 'Today', time: 1.8 },
+  { period: "Yesterday", time: 3.2 },
+  { period: "Today", time: 1.8 },
 ];
 
 const activityData = [
-  { name: 'Leads', value: 42 },
-  { name: 'Bookings', value: 18 },
-  { name: 'Follow-ups', value: 12 },
+  { name: "Leads", value: 42 },
+  { name: "Bookings", value: 18 },
+  { name: "Follow-ups", value: 12 },
 ];
 
 function LeadTrendChart() {
   return (
     <div className="h-[240px] w-full mt-4">
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={leadTrend} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+        <AreaChart
+          data={leadTrend}
+          margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+        >
           <defs>
             <linearGradient id="colorLeads" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
-              <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+              <stop
+                offset="5%"
+                stopColor="hsl(var(--primary))"
+                stopOpacity={0.3}
+              />
+              <stop
+                offset="95%"
+                stopColor="hsl(var(--primary))"
+                stopOpacity={0}
+              />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--muted-foreground))" opacity={0.1} />
-          <XAxis 
-            dataKey="day" 
-            axisLine={false} 
-            tickLine={false} 
-            tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} 
+          <CartesianGrid
+            strokeDasharray="3 3"
+            vertical={false}
+            stroke="hsl(var(--muted-foreground))"
+            opacity={0.1}
           />
-          <YAxis 
-            axisLine={false} 
-            tickLine={false} 
-            tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} 
+          <XAxis
+            dataKey="day"
+            axisLine={false}
+            tickLine={false}
+            tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
           />
-          <Tooltip 
-            contentStyle={{ 
-              backgroundColor: 'hsl(var(--card))', 
-              borderColor: 'hsl(var(--border))', 
-              borderRadius: '8px',
-              fontSize: '12px'
-            }} 
+          <YAxis
+            axisLine={false}
+            tickLine={false}
+            tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
           />
-          <Area 
-            type="monotone" 
-            dataKey="leads" 
-            stroke="hsl(var(--primary))" 
-            strokeWidth={2} 
-            fillOpacity={1} 
-            fill="url(#colorLeads)" 
+          <Tooltip
+            contentStyle={{
+              backgroundColor: "hsl(var(--card))",
+              borderColor: "hsl(var(--border))",
+              borderRadius: "8px",
+              fontSize: "12px",
+            }}
+          />
+          <Area
+            type="monotone"
+            dataKey="leads"
+            stroke="hsl(var(--primary))"
+            strokeWidth={2}
+            fillOpacity={1}
+            fill="url(#colorLeads)"
           />
         </AreaChart>
       </ResponsiveContainer>
@@ -116,25 +127,39 @@ function ConversionFunnel() {
   return (
     <div className="h-[200px] w-full mt-4">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={funnelData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
-          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--muted-foreground))" opacity={0.1} />
+        <BarChart
+          data={funnelData}
+          layout="vertical"
+          margin={{ top: 5, right: 30, left: 40, bottom: 5 }}
+        >
+          <CartesianGrid
+            strokeDasharray="3 3"
+            horizontal={false}
+            stroke="hsl(var(--muted-foreground))"
+            opacity={0.1}
+          />
           <XAxis type="number" hide />
-          <YAxis 
-            dataKey="stage" 
-            type="category" 
-            axisLine={false} 
-            tickLine={false} 
-            tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} 
+          <YAxis
+            dataKey="stage"
+            type="category"
+            axisLine={false}
+            tickLine={false}
+            tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
           />
-          <Tooltip 
-            contentStyle={{ 
-              backgroundColor: 'hsl(var(--card))', 
-              borderColor: 'hsl(var(--border))', 
-              borderRadius: '8px',
-              fontSize: '12px'
-            }} 
+          <Tooltip
+            contentStyle={{
+              backgroundColor: "hsl(var(--card))",
+              borderColor: "hsl(var(--border))",
+              borderRadius: "8px",
+              fontSize: "12px",
+            }}
           />
-          <Bar dataKey="value" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} barSize={20} />
+          <Bar
+            dataKey="value"
+            fill="hsl(var(--primary))"
+            radius={[0, 4, 4, 0]}
+            barSize={20}
+          />
         </BarChart>
       </ResponsiveContainer>
     </div>
@@ -145,28 +170,41 @@ function ResponseBarChart() {
   return (
     <div className="h-[200px] w-full mt-4">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={responseData} margin={{ top: 20, right: 20, left: -20, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--muted-foreground))" opacity={0.1} />
-          <XAxis 
-            dataKey="period" 
-            axisLine={false} 
-            tickLine={false} 
-            tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} 
+        <BarChart
+          data={responseData}
+          margin={{ top: 20, right: 20, left: -20, bottom: 0 }}
+        >
+          <CartesianGrid
+            strokeDasharray="3 3"
+            vertical={false}
+            stroke="hsl(var(--muted-foreground))"
+            opacity={0.1}
           />
-          <YAxis 
-            axisLine={false} 
-            tickLine={false} 
-            tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} 
+          <XAxis
+            dataKey="period"
+            axisLine={false}
+            tickLine={false}
+            tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
           />
-          <Tooltip 
-            contentStyle={{ 
-              backgroundColor: 'hsl(var(--card))', 
-              borderColor: 'hsl(var(--border))', 
-              borderRadius: '8px',
-              fontSize: '12px'
-            }} 
+          <YAxis
+            axisLine={false}
+            tickLine={false}
+            tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
           />
-          <Bar dataKey="time" fill="hsl(var(--accent))" radius={[4, 4, 0, 0]} barSize={40} />
+          <Tooltip
+            contentStyle={{
+              backgroundColor: "hsl(var(--card))",
+              borderColor: "hsl(var(--border))",
+              borderRadius: "8px",
+              fontSize: "12px",
+            }}
+          />
+          <Bar
+            dataKey="time"
+            fill="hsl(var(--accent))"
+            radius={[4, 4, 0, 0]}
+            barSize={40}
+          />
         </BarChart>
       </ResponsiveContainer>
     </div>
@@ -174,7 +212,12 @@ function ResponseBarChart() {
 }
 
 function ActivityPieChart() {
-  const COLORS = ['hsl(var(--primary))', 'hsl(var(--accent))', 'hsl(var(--muted-foreground))'];
+  const COLORS = [
+    "hsl(var(--primary))",
+    "hsl(var(--accent))",
+    "hsl(var(--muted-foreground))",
+  ];
+
   return (
     <div className="h-[200px] w-full mt-4">
       <ResponsiveContainer width="100%" height="100%">
@@ -188,17 +231,17 @@ function ActivityPieChart() {
             paddingAngle={5}
             dataKey="value"
           >
-            {activityData.map((entry, index) => (
+            {activityData.map((_, index) => (
               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
             ))}
           </Pie>
-          <Tooltip 
-            contentStyle={{ 
-              backgroundColor: 'hsl(var(--card))', 
-              borderColor: 'hsl(var(--border))', 
-              borderRadius: '8px',
-              fontSize: '12px'
-            }} 
+          <Tooltip
+            contentStyle={{
+              backgroundColor: "hsl(var(--card))",
+              borderColor: "hsl(var(--border))",
+              borderRadius: "8px",
+              fontSize: "12px",
+            }}
           />
         </PieChart>
       </ResponsiveContainer>
@@ -207,11 +250,61 @@ function ActivityPieChart() {
 }
 
 export function Dashboard() {
+  const { leads, events, loading, error, reload } = useLeads();
+
+  const leadsCaptured = leads.length;
+
+  const recentActivity = events.slice(0, 6).map((e) => {
+    const name =
+      e.payload_json?.name ||
+      e.payload_json?.lead_snapshot?.name ||
+      e.payload_json?.lead?.name ||
+      "Unknown";
+
+    const actionMap: Record<string, string> = {
+      lead_created: "Requested Service",
+      status_changed: "Status Updated",
+      call_logged: "Call Logged",
+      note_added: "Note Added",
+    };
+
+    return {
+      id: e.id,
+      type: "lead",
+      user: name,
+      action: actionMap[e.event_type] ?? e.event_type,
+      time: new Date(e.created_at).toLocaleString(),
+      status: e.payload_json?.status ?? "New",
+    };
+  });
+
+  const stats = [
+    { label: "Leads Captured", value: String(leadsCaptured), change: "", icon: Users },
+    { label: "Avg. Response", value: "-", change: "", icon: Clock },
+    { label: "Conversion", value: "-", change: "", icon: TrendingUp },
+    { label: "Open Intents", value: "-", change: "", icon: MessageSquare },
+  ];
+
+  if (loading) return <div className="p-6 text-sm text-muted-foreground">Loading…</div>;
+
+  if (error) {
+    return (
+      <div className="p-6 space-y-3">
+        <div className="text-sm text-red-500">Failed to load: {error}</div>
+        <Button onClick={reload} size="sm">
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
       <div>
         <h1 className="text-3xl font-bold">Command Center</h1>
-        <p className="text-muted-foreground mt-1">Real-time revenue operations and system health.</p>
+        <p className="text-muted-foreground mt-1">
+          Real-time revenue operations and system health.
+        </p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-4">
@@ -235,12 +328,19 @@ export function Dashboard() {
                   </p>
                   <stat.icon className="h-4 w-4 text-muted-foreground" />
                 </div>
+
                 <div className="flex items-baseline gap-2">
                   <div className="text-2xl font-bold">{stat.value}</div>
-                  <div className={cn(
-                    "text-[10px] font-bold",
-                    stat.change.startsWith('+') ? "text-status-success" : stat.change.startsWith('-') ? "text-status-info" : "text-muted-foreground"
-                  )}>
+                  <div
+                    className={cn(
+                      "text-[10px] font-bold",
+                      stat.change.startsWith("+")
+                        ? "text-status-success"
+                        : stat.change.startsWith("-")
+                        ? "text-status-info"
+                        : "text-muted-foreground"
+                    )}
+                  >
                     {stat.change}
                   </div>
                 </div>
@@ -293,26 +393,34 @@ export function Dashboard() {
               View All <ArrowRight className="h-3 w-3" />
             </Button>
           </CardHeader>
+
           <CardContent>
             <div className="space-y-4">
               {recentActivity.map((activity) => (
-                <div key={activity.id} className="flex items-center justify-between border-b border-border/50 pb-4 last:border-0 last:pb-0">
+                <div
+                  key={activity.id}
+                  className="flex items-center justify-between border-b border-border/50 pb-4 last:border-0 last:pb-0"
+                >
                   <div className="flex items-center gap-4">
                     <div className="h-10 w-10 rounded-lg bg-background flex items-center justify-center border">
-                      {activity.type === 'lead' ? <Users className="h-5 w-5" /> : 
-                       activity.type === 'booking' ? <CalendarCheck className="h-5 w-5" /> : 
-                       <PhoneCall className="h-5 w-5" />}
+                      <Users className="h-5 w-5" />
                     </div>
                     <div>
                       <div className="text-sm font-bold">{activity.user}</div>
                       <div className="text-xs text-muted-foreground">{activity.action}</div>
                     </div>
                   </div>
+
                   <div className="text-right">
-                    <Badge variant="outline" className="text-[10px] font-bold uppercase tracking-tighter">
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] font-bold uppercase tracking-tighter"
+                    >
                       {activity.status}
                     </Badge>
-                    <div className="text-[10px] text-muted-foreground mt-1">{activity.time}</div>
+                    <div className="text-[10px] text-muted-foreground mt-1">
+                      {activity.time}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -327,15 +435,21 @@ export function Dashboard() {
               Nexus Q active automation insights.
             </CardDescription>
           </CardHeader>
+
           <CardContent className="space-y-4">
             <div className="rounded-lg bg-background/10 p-4 border border-white/10">
-              <div className="text-xs font-bold uppercase tracking-wider mb-2">Next Suggested Action</div>
-              <p className="text-sm">3 leads are awaiting follow-up for HVAC service. High conversion probability identified.</p>
+              <div className="text-xs font-bold uppercase tracking-wider mb-2">
+                Next Suggested Action
+              </div>
+              <p className="text-sm">
+                3 leads are awaiting follow-up for HVAC service. High conversion probability
+                identified.
+              </p>
               <Button className="w-full mt-4 bg-white text-black hover:bg-white/90 text-xs font-bold">
                 Run Follow-up Flow
               </Button>
             </div>
-            
+
             <div className="flex items-center justify-between text-xs px-2">
               <span className="opacity-60">LLM Processing Status</span>
               <div className="flex items-center gap-1.5">

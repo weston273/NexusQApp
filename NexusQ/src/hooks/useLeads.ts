@@ -8,7 +8,7 @@ export type Lead = {
   phone: string | null;
   email: string | null;
   source: string | null;
-  status: string | null; // "new" etc
+  status: string | null;
   score: number | null;
   created_at: string;
   last_contacted_at: string | null;
@@ -38,20 +38,13 @@ export function useLeads() {
 
     const [{ data: leadData, error: leadErr }, { data: eventData, error: eventErr }] =
       await Promise.all([
-        supabase
-          .from("leads")
-          .select("*")
-          .order("created_at", { ascending: false })
-          .limit(200),
-        supabase
-          .from("lead_events")
-          .select("*")
-          .order("created_at", { ascending: false })
-          .limit(50),
+        supabase.from("leads").select("*").order("created_at", { ascending: false }).limit(200),
+        supabase.from("lead_events").select("*").order("created_at", { ascending: false }).limit(50),
       ]);
 
-    if (leadErr) setError(leadErr.message);
-    if (eventErr) setError(eventErr.message);
+    if (leadErr || eventErr) {
+      setError([leadErr?.message, eventErr?.message].filter(Boolean).join(" | "));
+    }
 
     setLeads(leadData ?? []);
     setEvents(eventData ?? []);
@@ -60,6 +53,32 @@ export function useLeads() {
 
   React.useEffect(() => {
     load();
+
+    // Realtime: watch both tables
+    const channel = supabase
+      .channel("realtime-leads-and-events")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "leads" },
+        () => {
+          load();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "lead_events" },
+        () => {
+          load();
+        }
+      )
+      .subscribe((status) => {
+       
+        console.log("Realtime status:", status);
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [load]);
 
   return { leads, events, loading, error, reload: load };
