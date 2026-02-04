@@ -1,3 +1,6 @@
+// src/pages/dashboard.tsx
+import * as React from "react";
+import { useNavigate } from "react-router-dom";
 import { useLeads } from "@/hooks/useLeads";
 
 import {
@@ -9,6 +12,7 @@ import {
   PhoneCall,
   CalendarCheck,
 } from "lucide-react";
+
 import {
   Card,
   CardContent,
@@ -19,6 +23,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+
 import {
   AreaChart,
   Area,
@@ -34,73 +39,114 @@ import {
   Cell,
 } from "recharts";
 
-const leadTrend = [
-  { day: "Mon", leads: 8 },
-  { day: "Tue", leads: 12 },
-  { day: "Wed", leads: 10 },
-  { day: "Thu", leads: 15 },
-  { day: "Fri", leads: 20 },
-  { day: "Sat", leads: 18 },
-  { day: "Sun", leads: 22 },
-];
+/* ------------------------- helpers (real data builders) ------------------------- */
 
-const funnelData = [
-  { stage: "Leads", value: 42 },
-  { stage: "Contacted", value: 35 },
-  { stage: "Qualified", value: 24 },
-  { stage: "Converted", value: 17 },
-];
+function last7DaysTrend(leads: { created_at: string }[]) {
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const map = new Map<string, number>();
 
-const responseData = [
-  { period: "Yesterday", time: 3.2 },
-  { period: "Today", time: 1.8 },
-];
+  // init last 7 days to 0
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const key = d.toISOString().slice(0, 10); // YYYY-MM-DD
+    map.set(key, 0);
+  }
 
-const activityData = [
-  { name: "Leads", value: 42 },
-  { name: "Bookings", value: 18 },
-  { name: "Follow-ups", value: 12 },
-];
+  for (const l of leads) {
+    const key = new Date(l.created_at).toISOString().slice(0, 10);
+    if (map.has(key)) map.set(key, (map.get(key) ?? 0) + 1);
+  }
 
-function LeadTrendChart() {
+  return Array.from(map.entries()).map(([date, count]) => {
+    const d = new Date(date);
+    return { day: dayNames[d.getDay()], leads: count };
+  });
+}
+
+function funnelFromStatus(leads: { status: string | null }[]) {
+  const norm = (s: string | null) => (s ?? "new").toLowerCase();
+
+  const total = leads.length;
+
+  // Adjust these buckets whenever you finalize your pipeline stages.
+  const contacted = leads.filter((l) =>
+    ["contacted", "qualifying", "quoted", "booked", "converted"].includes(
+      norm(l.status)
+    )
+  ).length;
+
+  const qualified = leads.filter((l) =>
+    ["qualifying", "quoted", "booked", "converted"].includes(norm(l.status))
+  ).length;
+
+  const converted = leads.filter((l) =>
+    ["booked", "converted"].includes(norm(l.status))
+  ).length;
+
+  return [
+    { stage: "Leads", value: total },
+    { stage: "Contacted", value: contacted },
+    { stage: "Qualified", value: qualified },
+    { stage: "Converted", value: converted },
+  ];
+}
+
+function activityFromEvents(events: { event_type: string }[]) {
+  const counts = new Map<string, number>();
+
+  for (const e of events) {
+    const k = (e.event_type ?? "unknown").toLowerCase();
+    counts.set(k, (counts.get(k) ?? 0) + 1);
+  }
+
+  const top = Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([k, v]) => ({ name: k.replace(/_/g, " "), value: v }));
+
+  return top.length ? top : [{ name: "no activity", value: 1 }];
+}
+
+/* ------------------------------ chart components ------------------------------ */
+
+function LeadTrendChart({
+  data,
+}: {
+  data: { day: string; leads: number }[];
+}) {
   return (
     <div className="h-[240px] w-full mt-4">
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart
-          data={leadTrend}
-          margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-        >
+        <AreaChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
           <defs>
             <linearGradient id="colorLeads" x1="0" y1="0" x2="0" y2="1">
-              <stop
-                offset="5%"
-                stopColor="hsl(var(--primary))"
-                stopOpacity={0.3}
-              />
-              <stop
-                offset="95%"
-                stopColor="hsl(var(--primary))"
-                stopOpacity={0}
-              />
+              <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
+              <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
             </linearGradient>
           </defs>
+
           <CartesianGrid
             strokeDasharray="3 3"
             vertical={false}
             stroke="hsl(var(--muted-foreground))"
             opacity={0.1}
           />
+
           <XAxis
             dataKey="day"
             axisLine={false}
             tickLine={false}
             tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
           />
+
           <YAxis
             axisLine={false}
             tickLine={false}
             tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
+            allowDecimals={false}
           />
+
           <Tooltip
             contentStyle={{
               backgroundColor: "hsl(var(--card))",
@@ -109,6 +155,7 @@ function LeadTrendChart() {
               fontSize: "12px",
             }}
           />
+
           <Area
             type="monotone"
             dataKey="leads"
@@ -123,15 +170,15 @@ function LeadTrendChart() {
   );
 }
 
-function ConversionFunnel() {
+function ConversionFunnel({
+  data,
+}: {
+  data: { stage: string; value: number }[];
+}) {
   return (
     <div className="h-[200px] w-full mt-4">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart
-          data={funnelData}
-          layout="vertical"
-          margin={{ top: 5, right: 30, left: 40, bottom: 5 }}
-        >
+        <BarChart data={data} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
           <CartesianGrid
             strokeDasharray="3 3"
             horizontal={false}
@@ -154,26 +201,22 @@ function ConversionFunnel() {
               fontSize: "12px",
             }}
           />
-          <Bar
-            dataKey="value"
-            fill="hsl(var(--primary))"
-            radius={[0, 4, 4, 0]}
-            barSize={20}
-          />
+          <Bar dataKey="value" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} barSize={20} />
         </BarChart>
       </ResponsiveContainer>
     </div>
   );
 }
 
-function ResponseBarChart() {
+function ResponseBarChart({
+  data,
+}: {
+  data: { period: string; time: number }[];
+}) {
   return (
     <div className="h-[200px] w-full mt-4">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart
-          data={responseData}
-          margin={{ top: 20, right: 20, left: -20, bottom: 0 }}
-        >
+        <BarChart data={data} margin={{ top: 20, right: 20, left: -20, bottom: 0 }}>
           <CartesianGrid
             strokeDasharray="3 3"
             vertical={false}
@@ -199,19 +242,18 @@ function ResponseBarChart() {
               fontSize: "12px",
             }}
           />
-          <Bar
-            dataKey="time"
-            fill="hsl(var(--accent))"
-            radius={[4, 4, 0, 0]}
-            barSize={40}
-          />
+          <Bar dataKey="time" fill="hsl(var(--accent))" radius={[4, 4, 0, 0]} barSize={40} />
         </BarChart>
       </ResponsiveContainer>
     </div>
   );
 }
 
-function ActivityPieChart() {
+function ActivityPieChart({
+  data,
+}: {
+  data: { name: string; value: number }[];
+}) {
   const COLORS = [
     "hsl(var(--primary))",
     "hsl(var(--accent))",
@@ -223,7 +265,7 @@ function ActivityPieChart() {
       <ResponsiveContainer width="100%" height="100%">
         <PieChart>
           <Pie
-            data={activityData}
+            data={data}
             cx="50%"
             cy="50%"
             innerRadius={60}
@@ -231,10 +273,11 @@ function ActivityPieChart() {
             paddingAngle={5}
             dataKey="value"
           >
-            {activityData.map((_, index) => (
+            {data.map((_, index) => (
               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
             ))}
           </Pie>
+
           <Tooltip
             contentStyle={{
               backgroundColor: "hsl(var(--card))",
@@ -249,18 +292,28 @@ function ActivityPieChart() {
   );
 }
 
+/* ----------------------------------- page ----------------------------------- */
+
 export function Dashboard() {
+  const navigate = useNavigate();
   const { leads, events, loading, error, reload } = useLeads();
 
   const leadsCaptured = leads.length;
 
-  const recentActivity = events.slice(0, 6).map((e) => {
-    const name =
-      e.payload_json?.name ||
-      e.payload_json?.lead_snapshot?.name ||
-      e.payload_json?.lead?.name ||
-      "Unknown";
+  const leadTrend = React.useMemo(() => last7DaysTrend(leads), [leads]);
+  const funnelData = React.useMemo(() => funnelFromStatus(leads), [leads]);
+  const activityData = React.useMemo(() => activityFromEvents(events), [events]);
 
+  // Keep this static for MVP (we can compute real response time later)
+  const responseData = React.useMemo(
+    () => [
+      { period: "Yesterday", time: 3.2 },
+      { period: "Today", time: 1.8 },
+    ],
+    []
+  );
+
+  const recentActivity = React.useMemo(() => {
     const actionMap: Record<string, string> = {
       lead_created: "Requested Service",
       status_changed: "Status Updated",
@@ -268,22 +321,33 @@ export function Dashboard() {
       note_added: "Note Added",
     };
 
-    return {
-      id: e.id,
-      type: "lead",
-      user: name,
-      action: actionMap[e.event_type] ?? e.event_type,
-      time: new Date(e.created_at).toLocaleString(),
-      status: e.payload_json?.status ?? "New",
-    };
-  });
+    return events.slice(0, 6).map((e) => {
+      const name =
+        e.payload_json?.name ||
+        e.payload_json?.lead_snapshot?.name ||
+        e.payload_json?.lead?.name ||
+        "Unknown";
 
-  const stats = [
-    { label: "Leads Captured", value: String(leadsCaptured), change: "", icon: Users },
-    { label: "Avg. Response", value: "-", change: "", icon: Clock },
-    { label: "Conversion", value: "-", change: "", icon: TrendingUp },
-    { label: "Open Intents", value: "-", change: "", icon: MessageSquare },
-  ];
+      return {
+        id: e.id,
+        type: "lead",
+        user: name,
+        action: actionMap[e.event_type] ?? e.event_type,
+        time: new Date(e.created_at).toLocaleString(),
+        status: e.payload_json?.status ?? "New",
+      };
+    });
+  }, [events]);
+
+  const stats = React.useMemo(
+    () => [
+      { label: "Leads Captured", value: String(leadsCaptured), change: "", icon: Users },
+      { label: "Avg. Response", value: "-", change: "", icon: Clock },
+      { label: "Conversion", value: "-", change: "", icon: TrendingUp },
+      { label: "Open Intents", value: "-", change: "", icon: MessageSquare },
+    ],
+    [leadsCaptured]
+  );
 
   if (loading) return <div className="p-6 text-sm text-muted-foreground">Loading…</div>;
 
@@ -314,7 +378,7 @@ export function Dashboard() {
             <CardDescription>Leads captured over the last 7 days.</CardDescription>
           </CardHeader>
           <CardContent>
-            <LeadTrendChart />
+            <LeadTrendChart data={leadTrend} />
           </CardContent>
         </Card>
 
@@ -357,7 +421,7 @@ export function Dashboard() {
             <CardDescription>Where leads progress or drop off.</CardDescription>
           </CardHeader>
           <CardContent>
-            <ConversionFunnel />
+            <ConversionFunnel data={funnelData} />
           </CardContent>
         </Card>
 
@@ -367,7 +431,7 @@ export function Dashboard() {
             <CardDescription>Average minutes to respond.</CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponseBarChart />
+            <ResponseBarChart data={responseData} />
           </CardContent>
         </Card>
 
@@ -377,7 +441,7 @@ export function Dashboard() {
             <CardDescription>Activity distribution across channels.</CardDescription>
           </CardHeader>
           <CardContent>
-            <ActivityPieChart />
+            <ActivityPieChart data={activityData} />
           </CardContent>
         </Card>
       </div>
@@ -389,7 +453,13 @@ export function Dashboard() {
               <CardTitle className="text-lg">Lead Activity</CardTitle>
               <CardDescription>Latest interactions across all channels.</CardDescription>
             </div>
-            <Button variant="ghost" size="sm" className="text-xs gap-1">
+
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs gap-1"
+              onClick={() => navigate("/pipeline")}
+            >
               View All <ArrowRight className="h-3 w-3" />
             </Button>
           </CardHeader>
@@ -403,11 +473,20 @@ export function Dashboard() {
                 >
                   <div className="flex items-center gap-4">
                     <div className="h-10 w-10 rounded-lg bg-background flex items-center justify-center border">
-                      <Users className="h-5 w-5" />
+                      {activity.type === "lead" ? (
+                        <Users className="h-5 w-5" />
+                      ) : activity.type === "booking" ? (
+                        <CalendarCheck className="h-5 w-5" />
+                      ) : (
+                        <PhoneCall className="h-5 w-5" />
+                      )}
                     </div>
+
                     <div>
                       <div className="text-sm font-bold">{activity.user}</div>
-                      <div className="text-xs text-muted-foreground">{activity.action}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {activity.action}
+                      </div>
                     </div>
                   </div>
 
@@ -442,19 +521,22 @@ export function Dashboard() {
                 Next Suggested Action
               </div>
               <p className="text-sm">
-                3 leads are awaiting follow-up for HVAC service. High conversion probability
-                identified.
+                Review new leads and move them into Qualifying for faster booking.
               </p>
-              <Button className="w-full mt-4 bg-white text-black hover:bg-white/90 text-xs font-bold">
-                Run Follow-up Flow
+
+              <Button
+                className="w-full mt-4 bg-white text-black hover:bg-white/90 text-xs font-bold"
+                onClick={() => navigate("/pipeline")}
+              >
+                Open Pipeline
               </Button>
             </div>
 
             <div className="flex items-center justify-between text-xs px-2">
-              <span className="opacity-60">LLM Processing Status</span>
+              <span className="opacity-60">Realtime Sync</span>
               <div className="flex items-center gap-1.5">
                 <div className="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />
-                <span>Optimized</span>
+                <span>Active</span>
               </div>
             </div>
           </CardContent>

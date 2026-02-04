@@ -1,5 +1,6 @@
 import { Routes, Route } from 'react-router-dom';
 import { Shell } from '@/components/layout/shell';
+import { SplashGate } from "@/components/splash/SplashGate";
 import { Dashboard } from '@/pages/dashboard';
 import { Pipeline } from '@/pages/pipeline';
 import { LeadIntake } from '@/pages/intake';
@@ -9,6 +10,7 @@ import { Toaster } from '@/components/ui/sonner';
 function App() {
   return (
     <>
+      <SplashGate>
       <Shell>
         <Routes>
           <Route path="/" element={<Dashboard />} />
@@ -18,6 +20,7 @@ function App() {
           <Route path="/settings" element={<div className="p-8 text-center text-muted-foreground">Settings module under development.</div>} />
         </Routes>
       </Shell>
+      </SplashGate>
       <Toaster />
     </>
   );

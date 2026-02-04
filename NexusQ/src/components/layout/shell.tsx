@@ -8,6 +8,16 @@ interface ShellProps {
 
 export function Shell({ children }: ShellProps) {
   const [sidebarOpen, setSidebarOpen] = React.useState(false)
+  function setTheme(dark: boolean) {
+  document.documentElement.classList.toggle("dark", dark);
+  localStorage.setItem("theme", dark ? "dark" : "light");
+}
+
+function initTheme() {
+  const saved = localStorage.getItem("theme");
+  if (saved) setTheme(saved === "dark");
+}
+
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
