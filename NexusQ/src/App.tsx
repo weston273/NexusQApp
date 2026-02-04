@@ -7,10 +7,17 @@ import { LeadIntake } from '@/pages/intake';
 import { Health } from '@/pages/health';
 import { Toaster } from '@/components/ui/sonner';
 
+import { useLeads } from '@/hooks/useLeads';
+
+
+
 function App() {
+
+  const { loading } = useLeads();
+  
   return (
     <>
-      <SplashGate>
+      <SplashGate ready={!loading}>
       <Shell>
         <Routes>
           <Route path="/" element={<Dashboard />} />
