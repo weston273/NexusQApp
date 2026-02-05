@@ -2,53 +2,79 @@ import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Logo from "@/assets/logo/nexus-q-logo.png";
 
-type SplashGateProps = {
+export function SplashGate({
+  children,
+  ready,
+}: {
   children: React.ReactNode;
-  ready: boolean; // ← controlled by Supabase load
-};
+  ready: boolean;
+}) {
+  const [visible, setVisible] = React.useState(true);
 
-export function SplashGate({ children, ready }: SplashGateProps) {
+  // Ensure splash respects saved theme immediately
+  React.useLayoutEffect(() => {
+    const saved = localStorage.getItem("theme");
+    if (saved === "dark") {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+  }, []);
+
+  // Hide splash only when app is ready
+  React.useEffect(() => {
+    if (!ready) return;
+    const t = setTimeout(() => setVisible(false), 500);
+    return () => clearTimeout(t);
+  }, [ready]);
+
   return (
     <>
       <AnimatePresence>
-        {!ready && (
+        {visible && (
           <motion.div
             className="fixed inset-0 z-50 flex items-center justify-center bg-background"
             initial={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.4, ease: "easeOut" }}
+            transition={{ duration: 0.35 }}
           >
-            <div className="relative flex flex-col items-center gap-6">
-              
-              {/* Glow pulse */}
-              <motion.div
-                className="absolute h-72 w-72 rounded-full bg-primary/20 blur-3xl"
-                animate={{ opacity: [0.4, 0.7, 0.4] }}
-                transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
-              />
-
-              {/* Logo */}
+            <div className="flex flex-col items-center gap-6">
+              {/* Logo with glow pulse */}
               <motion.img
                 src={Logo}
                 alt="Nexus Q"
-                className="relative h-64 w-auto select-none"
-                initial={{ scale: 0.92, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ duration: 0.45, ease: "easeOut" }}
+                className="h-28 w-auto select-none"
+                animate={{
+                  scale: [1, 1.04, 1],
+                  filter: [
+                    "drop-shadow(0 0 0px transparent)",
+                    "drop-shadow(0 0 18px hsl(var(--primary)))",
+                    "drop-shadow(0 0 0px transparent)",
+                  ],
+                }}
+                transition={{
+                  duration: 2,
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                }}
               />
 
               {/* Loading bar */}
-              <div className="h-1 w-16 rounded-full bg-muted-foreground/30 overflow-hidden">
+              <div className="h-1 w-14 rounded-full bg-muted overflow-hidden">
                 <motion.div
                   className="h-full bg-primary"
                   initial={{ x: "-100%" }}
                   animate={{ x: "100%" }}
-                  transition={{ duration: 1.1, repeat: Infinity, ease: "easeInOut" }}
+                  transition={{
+                    duration: 1,
+                    repeat: Infinity,
+                    ease: "easeInOut",
+                  }}
                 />
               </div>
 
-              {/* Demo mode label */}
-              <div className="absolute bottom-[-48px] text-[10px] uppercase tracking-widest text-muted-foreground/70">
+              {/* Footer note */}
+              <div className="absolute bottom-6 text-[10px] tracking-widest uppercase text-muted-foreground">
                 Demo Mode
               </div>
             </div>
@@ -56,7 +82,7 @@ export function SplashGate({ children, ready }: SplashGateProps) {
         )}
       </AnimatePresence>
 
-      {ready && children}
+      {!visible && children}
     </>
   );
 }
