@@ -7,12 +7,13 @@ import {
   Activity, 
   Settings,
   Menu,
-  X
+  X,
+  Moon,
+  Sun
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import Logo from '@/assets/logo/nexus-q-logo.png';
-
 
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
@@ -28,7 +29,23 @@ export function Sidebar({
   isOpen: boolean;
   setIsOpen: React.Dispatch<React.SetStateAction<boolean>>;
 }) {
-  
+  const [theme, setTheme] = React.useState<'light' | 'dark'>('light');
+
+  // Load saved theme
+  React.useEffect(() => {
+    const saved = localStorage.getItem('theme') as 'light' | 'dark' | null;
+    if (saved) {
+      setTheme(saved);
+      document.documentElement.classList.toggle('dark', saved === 'dark');
+    }
+  }, []);
+
+  const toggleTheme = () => {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    setTheme(next);
+    localStorage.setItem('theme', next);
+    document.documentElement.classList.toggle('dark', next === 'dark');
+  };
 
   return (
     <>
@@ -48,15 +65,12 @@ export function Sidebar({
           !isOpen && "-translate-x-full"
         )}
       >
-        {/* Logo Area */}
-        <div className="flex h-16 items-center justify-start border-b px-6">
-          <img
-            src={Logo}
-            alt="NexusQ Logo"
-            className="sidebar-logo"
-          />
+        {/* Logo */}
+       <div className="flex h-16 items-center justify-start border-b px-6">
+         <img src={Logo} alt="NexusQ Logo" className="sidebar-logo" /> 
         </div>
 
+        {/* Navigation */}
         <div className="flex flex-col gap-1 p-4">
           <p className="px-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">
             Navigation
@@ -81,7 +95,8 @@ export function Sidebar({
           ))}
         </div>
 
-        <div className="mt-auto border-t p-4">
+        {/* Footer */}
+        <div className="mt-auto border-t p-4 space-y-3">
           <NavLink
             to="/settings"
             className={({ isActive }) =>
@@ -97,13 +112,35 @@ export function Sidebar({
             Settings
           </NavLink>
 
-          <div className="mt-4 flex items-center gap-3 px-3 py-2">
+          {/* Theme Toggle */}
+          <Button
+            variant="ghost"
+            onClick={toggleTheme}
+            className="w-full justify-start gap-3 px-3 text-sm"
+          >
+            {theme === 'dark' ? (
+              <>
+                <Sun className="h-4 w-4" />
+                Light Mode
+              </>
+            ) : (
+              <>
+                <Moon className="h-4 w-4" />
+                Dark Mode
+              </>
+            )}
+          </Button>
+
+          {/* Operator */}
+          <div className="flex items-center gap-3 px-3 py-2">
             <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold">
               OP
             </div>
             <div className="flex flex-col">
               <span className="text-xs font-semibold">Operator</span>
-              <span className="text-[10px] text-muted-foreground">Nexus Q v1.0</span>
+              <span className="text-[10px] text-muted-foreground">
+                Nexus Q v1.0
+              </span>
             </div>
           </div>
         </div>
