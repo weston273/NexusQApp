@@ -43,7 +43,7 @@ export function SplashGate({
               <motion.img
                 src={Logo}
                 alt="Nexus Q"
-                className="h-28 w-auto select-none"
+                className="h-64 w-auto select-none"
                 animate={{
                   scale: [1, 1.04, 1],
                   filter: [
