@@ -1,5 +1,7 @@
 import * as React from "react";
 import { supabase } from "@/lib/supabase";
+import { triggerProgress } from "@/lib/progressBus";
+
 
 export type Lead = {
   id: string;
@@ -33,23 +35,56 @@ export function useLeads() {
   const [error, setError] = React.useState<string | null>(null);
 
   const load = React.useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  setLoading(true);
+  setError(null);
+  triggerProgress(650); // shows bar during fetch
 
-    const [{ data: leadData, error: leadErr }, { data: eventData, error: eventErr }] =
-      await Promise.all([
-        supabase.from("leads").select("*").order("created_at", { ascending: false }).limit(200),
-        supabase.from("lead_events").select("*").order("created_at", { ascending: false }).limit(50),
-      ]);
+  const [{ data: leadData, error: leadErr }, { data: eventData, error: eventErr }] =
+    await Promise.all([
+      supabase.from("leads").select("*").order("created_at", { ascending: false }).limit(200),
+      supabase.from("lead_events").select("*").order("created_at", { ascending: false }).limit(50),
+    ]);
 
-    if (leadErr || eventErr) {
-      setError([leadErr?.message, eventErr?.message].filter(Boolean).join(" | "));
-    }
+  if (leadErr) setError(leadErr.message);
+  if (eventErr) setError(eventErr.message);
 
-    setLeads(leadData ?? []);
-    setEvents(eventData ?? []);
-    setLoading(false);
-  }, []);
+  setLeads(leadData ?? []);
+  setEvents(eventData ?? []);
+  setLoading(false);
+}, []);
+
+  React.useEffect(() => {
+  const leadsChannel = supabase
+    .channel("rt-leads")
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "leads" },
+      () => {
+        triggerProgress(450); // quick “activity” bar
+        load(); // simplest + reliable for MVP
+      }
+    )
+    .subscribe();
+
+  const eventsChannel = supabase
+    .channel("rt-lead-events")
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "lead_events" },
+      () => {
+        triggerProgress(450);
+        load();
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(leadsChannel);
+    supabase.removeChannel(eventsChannel);
+  };
+}, [load]);
+
+
 
   React.useEffect(() => {
     load();
