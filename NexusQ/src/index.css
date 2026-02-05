@@ -78,6 +78,15 @@
     --radius: 0.75rem;
     --spacing: 0.25rem;
     --tracking-normal: 0em;
+
+    /* Charts - Professional Data Colors */
+    --chart-1: 221 83% 53%; /* Primary Blue */
+    --chart-2: 215 20% 65%; /* Muted Slate */
+    --chart-3: 199 89% 48%; /* Ocean Blue */
+    --chart-4: 243 75% 59%; /* Indigo Blue */
+    --chart-5: 217 19% 27%; /* Deep Slate */
+    --chart-grid: 214 32% 91%; /* matches your border for clean grid lines */
+
   }
   
   .dark {
@@ -123,6 +132,15 @@
     --sidebar-accent-foreground: 210 20% 98%;
     --sidebar-border: 222 47% 12%;
     --sidebar-ring: 224 76% 48%;
+
+    /* Charts - Dark Mode */
+    --chart-1: 217 91% 60%;
+    --chart-2: 215 20% 65%;
+    --chart-3: 199 89% 58%;
+    --chart-4: 243 75% 70%;
+    --chart-5: 210 20% 98%;
+    --chart-grid: 217 32% 17%; /* matches your border in dark */
+
   }
 
   * {
