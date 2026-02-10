@@ -198,7 +198,7 @@ export function LeadIntake() {
                   <Label htmlFor="name" className="font-bold text-xs uppercase tracking-wider">Full Name</Label>
                   <Input
                     id="name"
-                    placeholder="John Doe"
+                    placeholder="Justina Amari"
                     className="h-12"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}

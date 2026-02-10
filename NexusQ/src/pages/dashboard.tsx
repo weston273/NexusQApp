@@ -526,7 +526,7 @@ export function Dashboard() {
   }, [events]);
 
   const recentActivity = React.useMemo(() => {
-    return events.slice(0, 6).map((e) => {
+    return events.slice(0, 4).map((e) => {
       const name =
         e.payload_json?.name ||
         e.payload_json?.lead_snapshot?.name ||
