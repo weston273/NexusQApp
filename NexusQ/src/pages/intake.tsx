@@ -309,13 +309,13 @@ export function LeadIntake() {
                   <Input
                     id="phone"
                     type="tel"
-                    placeholder="+263771840862 or 0771840862"
+                    placeholder="+447911123456"
                     className="h-12"
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                   />
                   <div className="text-[10px] text-muted-foreground">
-                    Tip: we’ll auto-format Zimbabwe numbers to +263… for delivery.
+                    Tip : do not leave any empty spaces when inputting your phone number. Include the country code (e.g. +44 for UK, +263 for Zimbabwe).
                   </div>
                 </div>
 
@@ -348,7 +348,7 @@ export function LeadIntake() {
               </div>
               
               <p className="text-[10px] text-center text-muted-foreground">
-                By clicking "Request Service", you agree to be contacted via phone or text regarding your request.
+                By clicking "Request Service", a text message will be sent to the contacted person via phone or text regarding your request.
               </p>
             </div>
           )}
@@ -363,7 +363,7 @@ export function LeadIntake() {
               <div className="space-y-3">
                 <h2 className="text-3xl font-bold tracking-tight">Request Received</h2>
                 <p className="text-muted-foreground">
-                  Nexus Q is currently qualifying your request. You will receive an instant confirmation text in less than 2 minutes.
+                  Nexus Q is currently qualifying your request. The contacted person will receive an instant confirmation text in less than 2 minutes.
                 </p>
               </div>
               
