@@ -27,14 +27,48 @@ const services = [
   { id: 'general', label: 'General Repair', icon: Wrench, description: 'Standard home maintenance' },
 ];
 
+// --- helpers ---
+function normalizePhoneZW(input: string) {
+  const raw = String(input ?? '').trim();
+  const cleaned = raw.replace(/\s+/g, '').replace(/-/g, '');
+  if (!cleaned) return '';
+
+  // already +E.164
+  if (cleaned.startsWith('+')) return cleaned;
+
+  // 263xxxxxxxxx -> +263xxxxxxxxx
+  if (cleaned.startsWith('263')) return `+${cleaned}`;
+
+  // 0xxxxxxxxx -> +263xxxxxxxxx
+  if (cleaned.startsWith('0')) return `+263${cleaned.slice(1)}`;
+
+  // if user typed without 0 (e.g. 771840862), assume ZW
+  if (/^\d{9,10}$/.test(cleaned)) return `+263${cleaned}`;
+
+  return cleaned;
+}
+
+function makeReferenceId() {
+  // simple, non-crypto id for UX only
+  const a = Math.random().toString(36).slice(2, 6).toUpperCase();
+  const b = Math.random().toString(36).slice(2, 6).toUpperCase();
+  return `QX-${a}-${b}`;
+}
+
 export function LeadIntake() {
   const [step, setStep] = React.useState<Step>('service');
+  const [submitting, setSubmitting] = React.useState(false);
+  const [referenceId, setReferenceId] = React.useState<string>('');
+
   const [formData, setFormData] = React.useState({
     service: '',
     urgency: 'standard',
     address: '',
+    // preferredDate: '', // optional
+    // notes: '', // optional
     name: '',
     phone: '',
+    email: '', 
   });
 
   const progress = {
@@ -56,29 +90,67 @@ export function LeadIntake() {
   };
 
   async function submitLead() {
-  try {
-    await fetch("https://n8n-k7j4.onrender.com/webhook-test/lead-webhook", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        source: "nexusq-website",
-        service: formData.service,
-        urgency: formData.urgency,
-        address: formData.address,
-        name: formData.name,
-        phone: formData.phone,
-      }),
-    });
+    const phoneE164 = normalizePhoneZW(formData.phone);
+    const ref = makeReferenceId();
 
-    setStep("success");
-  } catch (error) {
-    console.error("Failed to submit lead", error);
-    alert("Something went wrong. Please try again.");
+    // Basic validations (keep it light + same flow)
+    if (!formData.service) return alert("Please select a service.");
+    if (!formData.address) return alert("Please enter the service address.");
+    if (!formData.name) return alert("Please enter your full name.");
+    if (!formData.phone) return alert("Please enter your phone number.");
+    if (!phoneE164.startsWith('+')) return alert("Please enter a valid phone number (e.g. +44771840862).");
+
+    setSubmitting(true);
+
+    const payload = {
+      source: "nexusq-website",
+      service: formData.service,
+      urgency: formData.urgency,
+      address: formData.address,
+      // preferred_date: formData.preferredDate || null,
+      // notes: formData.notes || null,
+      name: formData.name,
+      phone: phoneE164,        // ✅ normalized for Twilio + storage
+      phone_raw: formData.phone, // keep original too (optional)
+      email: formData.email || null,
+      reference_id: ref,
+    };
+
+    const urls = [
+      "https://n8n-k7j4.onrender.com/webhook-test/lead-webhook",
+      "https://n8n-k7j4.onrender.com/webhook/lead-webhook",
+    ];
+
+    try {
+      const results = await Promise.allSettled(
+        urls.map((url) =>
+          fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          })
+        )
+      );
+
+      const atLeastOneOk = results.some(
+        (r) => r.status === "fulfilled" && (r.value?.ok ?? false)
+      );
+
+      if (!atLeastOneOk) {
+        console.error("Lead submit failed:", results);
+        alert("Something went wrong. Please try again.");
+        return;
+      }
+
+      setReferenceId(ref);
+      setStep("success");
+    } catch (error) {
+      console.error("Failed to submit lead", error);
+      alert("Something went wrong. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   }
-}
-
 
   return (
     <div className="min-h-[80vh] flex flex-col items-center justify-center p-4">
@@ -169,6 +241,33 @@ export function LeadIntake() {
                     />
                   </div>
                 </div>
+
+                {/* optional preferred date */}
+                {/* <div className="space-y-3">
+                  <Label htmlFor="preferredDate" className="font-bold text-xs uppercase tracking-wider">Preferred Date (Optional)</Label>
+                  <div className="relative">
+                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="preferredDate"
+                      type="date"
+                      className="pl-10 h-12"
+                      value={formData.preferredDate}
+                      onChange={(e) => setFormData({ ...formData, preferredDate: e.target.value })}
+                    />
+                  </div>
+                </div> */}
+
+                {/* optional notes */}
+                {/* <div className="space-y-3">
+                  <Label htmlFor="notes" className="font-bold text-xs uppercase tracking-wider">Notes (Optional)</Label>
+                  <Input
+                    id="notes"
+                    placeholder="Quick details (e.g. leaking pipe under sink)"
+                    className="h-12"
+                    value={formData.notes}
+                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  />
+                </div> */}
               </div>
 
               <div className="flex gap-4">
@@ -204,15 +303,32 @@ export function LeadIntake() {
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   />
                 </div>
+
                 <div className="space-y-3">
                   <Label htmlFor="phone" className="font-bold text-xs uppercase tracking-wider">Phone Number</Label>
                   <Input
                     id="phone"
                     type="tel"
-                    placeholder="(555) 000-0000"
+                    placeholder="+263771840862 or 0771840862"
                     className="h-12"
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  />
+                  <div className="text-[10px] text-muted-foreground">
+                    Tip: we’ll auto-format Zimbabwe numbers to +263… for delivery.
+                  </div>
+                </div>
+
+                {/* optional email */}
+                <div className="space-y-3">
+                  <Label htmlFor="email" className="font-bold text-xs uppercase tracking-wider">Email (Optional)</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="name@example.com"
+                    className="h-12"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   />
                 </div>
               </div>
@@ -223,10 +339,11 @@ export function LeadIntake() {
                 </Button>
                 <Button 
                   className="flex-1 font-bold gap-2 h-12" 
-                  disabled={!formData.name || !formData.phone}
+                  disabled={!formData.name || !formData.phone || submitting}
                   onClick={submitLead}
                 >
-                  Request Service <CheckCircle2 className="h-4 w-4" />
+                  {submitting ? "Submitting..." : "Request Service"}{" "}
+                  <CheckCircle2 className="h-4 w-4" />
                 </Button>
               </div>
               
@@ -258,7 +375,7 @@ export function LeadIntake() {
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Reference ID</span>
-                    <span className="font-mono text-[10px] font-bold">QX-8492-BT</span>
+                    <span className="font-mono text-[10px] font-bold">{referenceId || "QX-XXXX-XXXX"}</span>
                   </div>
                 </CardContent>
               </Card>
@@ -266,7 +383,20 @@ export function LeadIntake() {
               <Button 
                 variant="outline" 
                 className="w-full font-bold h-12"
-                onClick={() => setStep('service')}
+                onClick={() => {
+                  setFormData({
+                    service: '',
+                    urgency: 'standard',
+                    address: '',
+                    // preferredDate: '',
+                    // notes: '',
+                    name: '',
+                    phone: '',
+                    email: '',
+                  });
+                  setReferenceId('');
+                  setStep('service');
+                }}
               >
                 Back to Home
               </Button>
