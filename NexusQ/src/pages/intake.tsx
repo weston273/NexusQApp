@@ -27,29 +27,35 @@ const services = [
   { id: 'general', label: 'General Repair', icon: Wrench, description: 'Standard home maintenance' },
 ];
 
-// --- helpers ---
-function normalizePhoneZW(input: string) {
-  const raw = String(input ?? '').trim();
-  const cleaned = raw.replace(/\s+/g, '').replace(/-/g, '');
-  if (!cleaned) return '';
+// --- phone countries (simple + strict) ---
+type PhoneCountry = {
+  code: string;
+  label: string;
+  dial: string;         // includes +
+  minLen: number;       // national digits (no leading 0)
+  maxLen: number;       // national digits
+  example: string;      // national example
+};
 
-  // already +E.164
-  if (cleaned.startsWith('+')) return cleaned;
+const phoneCountries: PhoneCountry[] = [
+  { code: 'ZW', label: 'Zimbabwe',        dial: '+263', minLen: 9,  maxLen: 9,  example: '771840862' },
+  { code: 'GB', label: 'United Kingdom',  dial: '+44',  minLen: 10, maxLen: 10, example: '7911123456' },
+  { code: 'US', label: 'United States',   dial: '+1',   minLen: 10, maxLen: 10, example: '4155552671' },
+  { code: 'ZA', label: 'South Africa',    dial: '+27',  minLen: 9,  maxLen: 9,  example: '711234567' },
+];
 
-  // 263xxxxxxxxx -> +263xxxxxxxxx
-  if (cleaned.startsWith('263')) return `+${cleaned}`;
+// Keep only digits; optionally remove a leading 0 (common when users type local format)
+function cleanNationalDigits(input: string) {
+  const digits = String(input ?? '').replace(/\D/g, '');
+  if (!digits) return '';
+  return digits.startsWith('0') ? digits.slice(1) : digits;
+}
 
-  // 0xxxxxxxxx -> +263xxxxxxxxx
-  if (cleaned.startsWith('0')) return `+263${cleaned.slice(1)}`;
-
-  // if user typed without 0 (e.g. 771840862), assume ZW
-  if (/^\d{9,10}$/.test(cleaned)) return `+263${cleaned}`;
-
-  return cleaned;
+function buildE164(country: PhoneCountry, nationalDigits: string) {
+  return `${country.dial}${nationalDigits}`;
 }
 
 function makeReferenceId() {
-  // simple, non-crypto id for UX only
   const a = Math.random().toString(36).slice(2, 6).toUpperCase();
   const b = Math.random().toString(36).slice(2, 6).toUpperCase();
   return `QX-${a}-${b}`;
@@ -60,6 +66,14 @@ export function LeadIntake() {
   const [submitting, setSubmitting] = React.useState(false);
   const [referenceId, setReferenceId] = React.useState<string>('');
 
+  // Phone UI state (country + national digits)
+  const [countryCode, setCountryCode] = React.useState<string>('ZW');
+  const selectedCountry = React.useMemo(
+    () => phoneCountries.find(c => c.code === countryCode) ?? phoneCountries[0],
+    [countryCode]
+  );
+  const [phoneNational, setPhoneNational] = React.useState<string>('');
+
   const [formData, setFormData] = React.useState({
     service: '',
     urgency: 'standard',
@@ -67,9 +81,16 @@ export function LeadIntake() {
     // preferredDate: '', // optional
     // notes: '', // optional
     name: '',
-    phone: '',
+    phone: '',   // kept for payload (we’ll set it to E.164 on submit)
     email: '', 
   });
+
+  // derive validation for phone
+  const phoneDigits = React.useMemo(() => cleanNationalDigits(phoneNational), [phoneNational]);
+  const phoneLen = phoneDigits.length;
+  const phoneTooLong = phoneLen > selectedCountry.maxLen;
+  const phoneTooShort = phoneLen > 0 && phoneLen < selectedCountry.minLen;
+  const phoneValid = phoneLen >= selectedCountry.minLen && phoneLen <= selectedCountry.maxLen;
 
   const progress = {
     service: 25,
@@ -90,15 +111,16 @@ export function LeadIntake() {
   };
 
   async function submitLead() {
-    const phoneE164 = normalizePhoneZW(formData.phone);
     const ref = makeReferenceId();
 
     // Basic validations (keep it light + same flow)
     if (!formData.service) return alert("Please select a service.");
     if (!formData.address) return alert("Please enter the service address.");
     if (!formData.name) return alert("Please enter your full name.");
-    if (!formData.phone) return alert("Please enter your phone number.");
-    if (!phoneE164.startsWith('+')) return alert("Please enter a valid phone number (e.g. +44771840862).");
+    if (!phoneDigits) return alert("Please enter your phone number.");
+    if (!phoneValid) return alert("Phone number is invalid. Please check the digits.");
+
+    const phoneE164 = buildE164(selectedCountry, phoneDigits);
 
     setSubmitting(true);
 
@@ -110,8 +132,8 @@ export function LeadIntake() {
       // preferred_date: formData.preferredDate || null,
       // notes: formData.notes || null,
       name: formData.name,
-      phone: phoneE164,        // ✅ normalized for Twilio + storage
-      phone_raw: formData.phone, // keep original too (optional)
+      phone: phoneE164,        // ✅ E.164 for Twilio + storage
+      phone_raw: `${selectedCountry.dial} ${phoneDigits}`, // simple raw view
       email: formData.email || null,
       reference_id: ref,
     };
@@ -143,6 +165,7 @@ export function LeadIntake() {
       }
 
       setReferenceId(ref);
+      setFormData((p) => ({ ...p, phone: phoneE164 })); // keep it consistent
       setStep("success");
     } catch (error) {
       console.error("Failed to submit lead", error);
@@ -304,19 +327,67 @@ export function LeadIntake() {
                   />
                 </div>
 
+                {/* ✅ Country picker + strict-length phone input */}
                 <div className="space-y-3">
-                  <Label htmlFor="phone" className="font-bold text-xs uppercase tracking-wider">Phone Number</Label>
-                  <Input
-                    id="phone"
-                    type="tel"
-                    placeholder="+447911123456"
-                    className="h-12"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  />
-                  <div className="text-[10px] text-muted-foreground">
-                    Tip : do not leave any empty spaces when inputting your phone number. Include the country code (e.g. +44 for UK, +263 for Zimbabwe).
+                  <Label className="font-bold text-xs uppercase tracking-wider">Phone Number</Label>
+
+                  <div className="grid grid-cols-[140px_1fr] gap-3">
+                    <select
+                      value={countryCode}
+                      onChange={(e) => {
+                        setCountryCode(e.target.value);
+                        setPhoneNational(''); // reset digits when changing country (avoids mismatch)
+                      }}
+                      className={cn(
+                        "h-12 w-full rounded-md border border-input bg-background px-3 text-sm",
+                        "focus:outline-none focus:ring-2 focus:ring-ring"
+                      )}
+                    >
+                      {phoneCountries.map((c) => (
+                        <option key={c.code} value={c.code}>
+                          {c.label} ({c.dial})
+                        </option>
+                      ))}
+                    </select>
+
+                    <Input
+                      id="phone"
+                      type="tel"
+                      inputMode="numeric"
+                      placeholder={selectedCountry.example}
+                      className={cn(
+                        "h-12",
+                        (phoneTooShort || phoneTooLong) ? "border-status-error focus-visible:ring-status-error" : ""
+                      )}
+                      value={phoneNational}
+                      onChange={(e) => {
+                        // digits only + remove spaces + remove leading 0
+                        const digits = cleanNationalDigits(e.target.value);
+
+                        // enforce max length
+                        const max = selectedCountry.maxLen;
+                        const clipped = digits.slice(0, max);
+
+                        setPhoneNational(clipped);
+                      }}
+                      maxLength={selectedCountry.maxLen + 2} // +2 buffer because user may paste with 0/spaces; we clip anyway
+                    />
                   </div>
+
+                  <div className="text-[10px] text-muted-foreground">
+                    Output format: <span className="font-mono">{selectedCountry.dial}{phoneDigits || "…"}</span>
+                  </div>
+
+                  {(phoneTooShort || phoneTooLong) && (
+                    <div className="text-[10px] font-bold text-status-error">
+                      Invalid number: {selectedCountry.label} requires{" "}
+                      {selectedCountry.minLen === selectedCountry.maxLen
+                        ? `${selectedCountry.maxLen} digits`
+                        : `${selectedCountry.minLen}-${selectedCountry.maxLen} digits`
+                      }{" "}
+                      after {selectedCountry.dial}. (Don’t include the starting 0.)
+                    </div>
+                  )}
                 </div>
 
                 {/* optional email */}
@@ -339,7 +410,7 @@ export function LeadIntake() {
                 </Button>
                 <Button 
                   className="flex-1 font-bold gap-2 h-12" 
-                  disabled={!formData.name || !formData.phone || submitting}
+                  disabled={!formData.name || !phoneDigits || !phoneValid || submitting}
                   onClick={submitLead}
                 >
                   {submitting ? "Submitting..." : "Request Service"}{" "}
@@ -395,6 +466,8 @@ export function LeadIntake() {
                     email: '',
                   });
                   setReferenceId('');
+                  setCountryCode('ZW');
+                  setPhoneNational('');
                   setStep('service');
                 }}
               >
