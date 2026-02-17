@@ -1,7 +1,7 @@
+// src/hooks/useLeads.ts
 import * as React from "react";
 import { supabase } from "@/lib/supabase";
 import { triggerProgress } from "@/lib/progressBus";
-
 
 export type Lead = {
   id: string;
@@ -22,99 +22,86 @@ export type Lead = {
 export type LeadEvent = {
   id: string;
   client_id: string | null;
-  lead_id: string;
+  lead_id: string | null; // ✅ schema says nullable
   event_type: string;
   payload_json: any;
   created_at: string;
 };
 
+export type PipelineRow = {
+  id: string;
+  client_id: string | null;
+  lead_id: string | null;
+  stage: string;
+  value: number | null;
+  probability: number | null;
+  updated_at: string | null;
+};
+
 export function useLeads() {
   const [leads, setLeads] = React.useState<Lead[]>([]);
   const [events, setEvents] = React.useState<LeadEvent[]>([]);
+  const [pipelineRows, setPipelineRows] = React.useState<PipelineRow[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
-  const load = React.useCallback(async () => {
-  setLoading(true);
-  setError(null);
-  triggerProgress(650); // shows bar during fetch
+  const load = React.useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent ?? false;
 
-  const [{ data: leadData, error: leadErr }, { data: eventData, error: eventErr }] =
-    await Promise.all([
+    if (!silent) {
+      setLoading(true);
+      triggerProgress(650);
+    }
+    setError(null);
+
+    const [
+      { data: leadData, error: leadErr },
+      { data: eventData, error: eventErr },
+      { data: pipeData, error: pipeErr },
+    ] = await Promise.all([
       supabase.from("leads").select("*").order("created_at", { ascending: false }).limit(200),
       supabase.from("lead_events").select("*").order("created_at", { ascending: false }).limit(50),
+      supabase
+        .from("pipeline")
+        .select("id, client_id, lead_id, stage, value, probability, updated_at")
+        .limit(2000),
     ]);
 
-  if (leadErr) setError(leadErr.message);
-  if (eventErr) setError(eventErr.message);
+    const firstErr = leadErr ?? eventErr ?? pipeErr;
+    if (firstErr) setError(firstErr.message);
 
-  setLeads(leadData ?? []);
-  setEvents(eventData ?? []);
-  setLoading(false);
-}, []);
+    setLeads((leadData ?? []) as any);
+    setEvents((eventData ?? []) as any);
+    setPipelineRows((pipeData ?? []) as any);
 
-  React.useEffect(() => {
-  const leadsChannel = supabase
-    .channel("rt-leads")
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "leads" },
-      () => {
-        triggerProgress(450); // quick “activity” bar
-        load(); // simplest + reliable for MVP
-      }
-    )
-    .subscribe();
-
-  const eventsChannel = supabase
-    .channel("rt-lead-events")
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "lead_events" },
-      () => {
-        triggerProgress(450);
-        load();
-      }
-    )
-    .subscribe();
-
-  return () => {
-    supabase.removeChannel(leadsChannel);
-    supabase.removeChannel(eventsChannel);
-  };
-}, [load]);
-
-
+    if (!silent) setLoading(false);
+  }, []);
 
   React.useEffect(() => {
+    // initial load
     load();
 
-    // Realtime: watch both tables
+    // ✅ ONE channel for all tables
     const channel = supabase
-      .channel("realtime-leads-and-events")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "leads" },
-        () => {
-          load();
-        }
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "lead_events" },
-        () => {
-          load();
-        }
-      )
-      .subscribe((status) => {
-       
-        console.log("Realtime status:", status);
-      });
+      .channel("rt-leads-events-pipeline")
+      .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, () => {
+        triggerProgress(450);
+        load({ silent: true });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "lead_events" }, () => {
+        triggerProgress(450);
+        load({ silent: true });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "pipeline" }, () => {
+        triggerProgress(450);
+        load({ silent: true });
+      })
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
   }, [load]);
 
-  return { leads, events, loading, error, reload: load };
+  return { leads, events, pipelineRows, loading, error, reload: load };
 }

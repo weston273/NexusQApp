@@ -148,7 +148,10 @@ export function LeadIntake() {
         urls.map((url) =>
           fetch(url, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { 
+              "Content-Type": "application/json",
+              // "x-nexusq-secret" : "nexus-q-secret-123",
+            },
             body: JSON.stringify(payload),
           })
         )

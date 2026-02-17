@@ -1,17 +1,11 @@
+// src/pages/Dashboard.tsx (or Dashboard.jsx if you remove types)
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useLeads } from "@/hooks/useLeads";
-import { supabase } from "@/lib/supabase";
 
 import { Users, MessageSquare, TrendingUp, Clock, ArrowRight } from "lucide-react";
 
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -44,11 +38,7 @@ function startOfDay(d: Date) {
 }
 
 function isSameDay(a: Date, b: Date) {
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  );
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
 function minutesBetween(aIso?: string | null, bIso?: string | null) {
@@ -82,6 +72,12 @@ function normStatus(s?: string | null) {
   return (s ?? "new").toLowerCase().trim();
 }
 
+function toStageId(s?: string | null) {
+  const v = (s ?? "new").toLowerCase().trim();
+  if (v === "new" || v === "qualifying" || v === "quoted" || v === "booked") return v;
+  return "new";
+}
+
 // -------------------------
 // Charts (data via props)
 // -------------------------
@@ -94,7 +90,6 @@ function PipelineSummaryFunnel({
   totalValue: number;
   onViewPipeline: () => void;
 }) {
-  // Uses your theme chart tokens (works in light + dark)
   const COLORS = [
     "hsl(var(--chart-1))",
     "hsl(var(--chart-3))",
@@ -110,18 +105,12 @@ function PipelineSummaryFunnel({
           <CardTitle className="text-lg">Pipeline Summary</CardTitle>
           <CardDescription>Live funnel breakdown and pipeline value.</CardDescription>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onViewPipeline}
-          className="gap-2"
-        >
+        <Button variant="outline" size="sm" onClick={onViewPipeline} className="gap-2">
           View Pipeline <ArrowRight className="h-3 w-3" />
         </Button>
       </CardHeader>
 
       <CardContent className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr] items-center">
-        {/* Funnel */}
         <div className="h-[260px] w-full">
           <ResponsiveContainer width="100%" height="100%">
             <FunnelChart>
@@ -148,7 +137,6 @@ function PipelineSummaryFunnel({
           </ResponsiveContainer>
         </div>
 
-        {/* Right summary */}
         <div className="space-y-3">
           <div className="space-y-2">
             {data.map((row) => (
@@ -156,18 +144,14 @@ function PipelineSummaryFunnel({
                 key={row.name}
                 className="flex items-center justify-between border-b border-border/40 pb-2 last:border-0 last:pb-0"
               >
-                <div className="text-sm text-muted-foreground font-medium">
-                  {row.name}
-                </div>
+                <div className="text-sm text-muted-foreground font-medium">{row.name}</div>
                 <div className="text-lg font-bold">{row.value}</div>
               </div>
             ))}
           </div>
 
           <div className="rounded-xl bg-background/60 border p-4">
-            <div className="text-xs font-bold uppercase tracking-widest text-muted-foreground/70">
-              Total Pipeline Value
-            </div>
+            <div className="text-xs font-bold uppercase tracking-widest text-muted-foreground/70">Total Pipeline Value</div>
             <div className="mt-2 text-2xl font-bold">${money(totalValue)}</div>
           </div>
         </div>
@@ -176,53 +160,23 @@ function PipelineSummaryFunnel({
   );
 }
 
-function LeadTrendChart({
-  data,
-}: {
-  data: Array<{ day: string; leads: number }>;
-}) {
+function LeadTrendChart({ data }: { data: Array<{ day: string; leads: number }> }) {
   return (
     <div className="h-[240px] w-full mt-4">
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart
-          data={data}
-          margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-        >
+        <AreaChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
           <defs>
             <linearGradient id="colorLeads" x1="0" y1="0" x2="0" y2="1">
-              <stop
-                offset="5%"
-                stopColor="hsl(var(--chart-1))"
-                stopOpacity={0.35}
-              />
-              <stop
-                offset="95%"
-                stopColor="hsl(var(--chart-1))"
-                stopOpacity={0}
-              />
+              <stop offset="5%" stopColor="hsl(var(--chart-1))" stopOpacity={0.35} />
+              <stop offset="95%" stopColor="hsl(var(--chart-1))" stopOpacity={0} />
             </linearGradient>
           </defs>
 
-          <CartesianGrid
-            strokeDasharray="3 3"
-            vertical={false}
-            stroke="hsl(var(--chart-grid))"
-            opacity={0.6}
-          />
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--chart-grid))" opacity={0.6} />
 
-          <XAxis
-            dataKey="day"
-            axisLine={false}
-            tickLine={false}
-            tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
-          />
+          <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
 
-          <YAxis
-            axisLine={false}
-            tickLine={false}
-            allowDecimals={false}
-            tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
-          />
+          <YAxis axisLine={false} tickLine={false} allowDecimals={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
 
           <Tooltip
             contentStyle={{
@@ -233,47 +187,21 @@ function LeadTrendChart({
             }}
           />
 
-          <Area
-            type="monotone"
-            dataKey="leads"
-            stroke="hsl(var(--chart-1))"
-            strokeWidth={2}
-            fillOpacity={1}
-            fill="url(#colorLeads)"
-          />
+          <Area type="monotone" dataKey="leads" stroke="hsl(var(--chart-1))" strokeWidth={2} fillOpacity={1} fill="url(#colorLeads)" />
         </AreaChart>
       </ResponsiveContainer>
     </div>
   );
 }
 
-function ConversionFunnel({
-  data,
-}: {
-  data: Array<{ stage: string; value: number }>;
-}) {
+function ConversionFunnel({ data }: { data: Array<{ stage: string; value: number }> }) {
   return (
     <div className="h-[200px] w-full mt-4">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart
-          data={data}
-          layout="vertical"
-          margin={{ top: 5, right: 30, left: 40, bottom: 5 }}
-        >
-          <CartesianGrid
-            strokeDasharray="3 3"
-            horizontal={false}
-            stroke="hsl(var(--chart-grid))"
-            opacity={0.6}
-          />
+        <BarChart data={data} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
+          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--chart-grid))" opacity={0.6} />
           <XAxis type="number" hide />
-          <YAxis
-            dataKey="stage"
-            type="category"
-            axisLine={false}
-            tickLine={false}
-            tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
-          />
+          <YAxis dataKey="stage" type="category" axisLine={false} tickLine={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
           <Tooltip
             contentStyle={{
               backgroundColor: "hsl(var(--card))",
@@ -282,44 +210,21 @@ function ConversionFunnel({
               fontSize: "12px",
             }}
           />
-          <Bar
-            dataKey="value"
-            fill="hsl(var(--chart-1))"
-            radius={[0, 4, 4, 0]}
-            barSize={20}
-          />
+          <Bar dataKey="value" fill="hsl(var(--chart-1))" radius={[0, 4, 4, 0]} barSize={20} />
         </BarChart>
       </ResponsiveContainer>
     </div>
   );
 }
 
-function ResponseBarChart({
-  data,
-}: {
-  data: Array<{ period: string; time: number }>;
-}) {
+function ResponseBarChart({ data }: { data: Array<{ period: string; time: number }> }) {
   return (
     <div className="h-[200px] w-full mt-4">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ top: 20, right: 20, left: -20, bottom: 0 }}>
-          <CartesianGrid
-            strokeDasharray="3 3"
-            vertical={false}
-            stroke="hsl(var(--chart-grid))"
-            opacity={0.6}
-          />
-          <XAxis
-            dataKey="period"
-            axisLine={false}
-            tickLine={false}
-            tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
-          />
-          <YAxis
-            axisLine={false}
-            tickLine={false}
-            tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
-          />
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--chart-grid))" opacity={0.6} />
+          <XAxis dataKey="period" axisLine={false} tickLine={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
+          <YAxis axisLine={false} tickLine={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
           <Tooltip
             contentStyle={{
               backgroundColor: "hsl(var(--card))",
@@ -329,42 +234,21 @@ function ResponseBarChart({
             }}
             formatter={(value) => [`${value}m`, "Avg Response"]}
           />
-          <Bar
-            dataKey="time"
-            fill="hsl(var(--chart-3))"
-            radius={[4, 4, 0, 0]}
-            barSize={40}
-          />
+          <Bar dataKey="time" fill="hsl(var(--chart-3))" radius={[4, 4, 0, 0]} barSize={40} />
         </BarChart>
       </ResponsiveContainer>
     </div>
   );
 }
 
-function ActivityPieChart({
-  data,
-}: {
-  data: Array<{ name: string; value: number }>;
-}) {
-  const COLORS = [
-    "hsl(var(--chart-1))",
-    "hsl(var(--chart-3))",
-    "hsl(var(--chart-4))",
-  ];
+function ActivityPieChart({ data }: { data: Array<{ name: string; value: number }> }) {
+  const COLORS = ["hsl(var(--chart-1))", "hsl(var(--chart-3))", "hsl(var(--chart-4))"];
 
   return (
     <div className="h-[200px] w-full mt-4">
       <ResponsiveContainer width="100%" height="100%">
         <PieChart>
-          <Pie
-            data={data}
-            cx="50%"
-            cy="50%"
-            innerRadius={60}
-            outerRadius={80}
-            paddingAngle={5}
-            dataKey="value"
-          >
+          <Pie data={data} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
             {data.map((_, index) => (
               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
             ))}
@@ -388,52 +272,33 @@ function ActivityPieChart({
 // -------------------------
 export function Dashboard() {
   const navigate = useNavigate();
-  const { leads, events, loading, error, reload } = useLeads();
+  const { leads, events, pipelineRows, loading, error, reload } = useLeads();
 
-  // Total pipeline value (optional: uses pipeline table if exists)
-  const [pipelineValue, setPipelineValue] = React.useState<number>(0);
+  // ✅ Total pipeline value from pipeline table (live via realtime)
+  const pipelineValue = React.useMemo(() => {
+    return (pipelineRows ?? []).reduce((sum, r) => sum + (Number(r.value) || 0), 0);
+  }, [pipelineRows]);
 
-  React.useEffect(() => {
-    let alive = true;
+  // ✅ Pipeline Summary should come from pipeline.stage (real)
+  const pipelineSummary = React.useMemo(() => {
+    const counts = { new: 0, qualifying: 0, quoted: 0, booked: 0 };
 
-    async function loadPipelineValue() {
-      try {
-        const { data, error } = await supabase.from("pipeline").select("value").limit(1000);
-        if (error) return;
-
-        const total = (data ?? []).reduce(
-          (sum: number, row: any) => sum + (Number(row?.value) || 0),
-          0
-        );
-        if (alive) setPipelineValue(total);
-      } catch {
-        // keep 0
-      }
+    for (const row of pipelineRows ?? []) {
+      const st = toStageId(row.stage);
+      counts[st] += 1;
     }
 
-    loadPipelineValue();
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  // Pipeline Summary (top funnel)
-  const pipelineSummary = React.useMemo(() => {
-    const newLead = leads.filter((l) => normStatus(l.status) === "new").length;
-    const inspections = leads.filter((l) => normStatus(l.status) === "qualifying").length;
-    const quotes = leads.filter((l) => normStatus(l.status) === "quoted").length;
-
+    // keep your “Follow-Up” logic based on leads (last_contacted_at + not booked)
     const followUp = leads.filter((l) => l.last_contacted_at && normStatus(l.status) !== "booked").length;
-    const wonDeals = leads.filter((l) => normStatus(l.status) === "booked").length;
 
     return [
-      { name: `New Lead: ${newLead}`, value: newLead },
-      { name: `Inspections: ${inspections}`, value: inspections },
-      { name: `Quotes Sent: ${quotes}`, value: quotes },
+      { name: `New Lead: ${counts.new}`, value: counts.new },
+      { name: `Inspections: ${counts.qualifying}`, value: counts.qualifying },
+      { name: `Quotes Sent: ${counts.quoted}`, value: counts.quoted },
       { name: `Follow-Up: ${followUp}`, value: followUp },
-      { name: `Won Deals: ${wonDeals}`, value: wonDeals },
+      { name: `Won Deals: ${counts.booked}`, value: counts.booked },
     ];
-  }, [leads]);
+  }, [pipelineRows, leads]);
 
   // LeadTrend (last 7 days)
   const leadTrend = React.useMemo(() => {
@@ -455,10 +320,7 @@ export function Dashboard() {
       if (counts.has(createdDay)) counts.set(createdDay, (counts.get(createdDay) ?? 0) + 1);
     }
 
-    return days.map((d) => ({
-      day: d.label,
-      leads: counts.get(d.date.toISOString()) ?? 0,
-    }));
+    return days.map((d) => ({ day: d.label, leads: counts.get(d.date.toISOString()) ?? 0 }));
   }, [leads]);
 
   const funnelData = React.useMemo(() => {
@@ -507,9 +369,7 @@ export function Dashboard() {
       counts.set(k, (counts.get(k) ?? 0) + 1);
     }
 
-    const sorted = Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3);
+    const sorted = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 3);
 
     if (!sorted.length) {
       return [
@@ -519,19 +379,12 @@ export function Dashboard() {
       ];
     }
 
-    return sorted.map(([name, value]) => ({
-      name: (name ?? "unknown").replace(/_/g, " "),
-      value,
-    }));
+    return sorted.map(([name, value]) => ({ name: (name ?? "unknown").replace(/_/g, " "), value }));
   }, [events]);
 
   const recentActivity = React.useMemo(() => {
     return events.slice(0, 4).map((e) => {
-      const name =
-        e.payload_json?.name ||
-        e.payload_json?.lead_snapshot?.name ||
-        e.payload_json?.lead?.name ||
-        "Unknown";
+      const name = e.payload_json?.name || e.payload_json?.lead_snapshot?.name || e.payload_json?.lead?.name || "Unknown";
 
       const actionMap: Record<string, string> = {
         lead_created: "Requested Service",
@@ -577,12 +430,21 @@ export function Dashboard() {
     { label: "Open Intents", value: String(Math.max(0, quotedCount)), change: "", icon: MessageSquare },
   ];
 
+  // For “System Intelligence” card: prefer pipeline new-stage count if available
+  const newPipelineCount = React.useMemo(() => {
+    const rows = pipelineRows ?? [];
+    if (!rows.length) return leads.filter((l) => normStatus(l.status) === "new").length;
+    return rows.filter((r) => toStageId(r.stage) === "new").length;
+  }, [pipelineRows, leads]);
+
   if (loading) return <div className="p-6 text-sm text-muted-foreground">Loading…</div>;
   if (error)
     return (
       <div className="p-6 space-y-3">
         <div className="text-sm text-red-500">Failed to load: {error}</div>
-        <Button onClick={reload} size="sm">Retry</Button>
+        <Button onClick={reload} size="sm">
+          Retry
+        </Button>
       </div>
     );
 
@@ -596,12 +458,7 @@ export function Dashboard() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate("/intake")}
-            className="gap-2"
-          >
+          <Button variant="outline" size="sm" onClick={() => navigate("/intake")} className="gap-2">
             Add Lead <ArrowRight className="h-3 w-3" />
           </Button>
           <Button size="sm" onClick={reload}>
@@ -611,11 +468,7 @@ export function Dashboard() {
       </div>
 
       {/* 1) Pipeline Summary FIRST */}
-      <PipelineSummaryFunnel
-        data={pipelineSummary}
-        totalValue={pipelineValue}
-        onViewPipeline={() => navigate("/pipeline")}
-      />
+      <PipelineSummaryFunnel data={pipelineSummary} totalValue={pipelineValue} onViewPipeline={() => navigate("/pipeline")} />
 
       {/* 2) Lead volume + stat cards */}
       <div className="grid gap-6 lg:grid-cols-4">
@@ -634,9 +487,7 @@ export function Dashboard() {
             <Card key={stat.label} className="border-none bg-muted/30">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between space-y-0 pb-2">
-                  <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60">
-                    {stat.label}
-                  </p>
+                  <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60">{stat.label}</p>
                   <stat.icon className="h-4 w-4 text-muted-foreground" />
                 </div>
                 <div className="flex items-baseline gap-2">
@@ -701,12 +552,7 @@ export function Dashboard() {
               <CardTitle className="text-lg">Lead Activity</CardTitle>
               <CardDescription>Latest interactions across all channels.</CardDescription>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-xs gap-1"
-              onClick={() => navigate("/pipeline")}
-            >
+            <Button variant="ghost" size="sm" className="text-xs gap-1" onClick={() => navigate("/pipeline")}>
               View All <ArrowRight className="h-3 w-3" />
             </Button>
           </CardHeader>
@@ -727,21 +573,14 @@ export function Dashboard() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] font-bold uppercase tracking-tighter"
-                    >
+                    <Badge variant="outline" className="text-[10px] font-bold uppercase tracking-tighter">
                       {activity.status}
                     </Badge>
-                    <div className="text-[10px] text-muted-foreground mt-1">
-                      {activity.time}
-                    </div>
+                    <div className="text-[10px] text-muted-foreground mt-1">{activity.time}</div>
                   </div>
                 </div>
               ))}
-              {!recentActivity.length && (
-                <div className="text-sm text-muted-foreground">No activity yet.</div>
-              )}
+              {!recentActivity.length && <div className="text-sm text-muted-foreground">No activity yet.</div>}
             </div>
           </CardContent>
         </Card>
@@ -749,19 +588,12 @@ export function Dashboard() {
         <Card className="border-none bg-primary text-primary-foreground">
           <CardHeader>
             <CardTitle className="text-lg">System Intelligence</CardTitle>
-            <CardDescription className="text-primary-foreground/60">
-              Nexus Q active automation insights.
-            </CardDescription>
+            <CardDescription className="text-primary-foreground/60">Nexus Q active automation insights.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="rounded-lg bg-background/10 p-4 border border-white/10">
-              <div className="text-xs font-bold uppercase tracking-wider mb-2">
-                Next Suggested Action
-              </div>
-              <p className="text-sm">
-                {leads.filter((l) => normStatus(l.status) === "new").length} new
-                leads awaiting follow-up.
-              </p>
+              <div className="text-xs font-bold uppercase tracking-wider mb-2">Next Suggested Action</div>
+              <p className="text-sm">{newPipelineCount} new leads awaiting follow-up.</p>
               <Button
                 className="w-full mt-4 bg-white text-black hover:bg-white/90 text-xs font-bold"
                 onClick={() => navigate("/pipeline")}

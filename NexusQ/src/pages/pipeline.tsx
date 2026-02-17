@@ -1,6 +1,7 @@
-import { useLeads } from "@/hooks/useLeads";
+// src/pages/Pipeline.tsx (or Pipeline.jsx if you remove types)
 import React from "react";
-import { supabase } from "@/lib/supabase";
+import { useLeads } from "@/hooks/useLeads";
+
 import {
   BarChart as ReBarChart,
   Bar,
@@ -11,14 +12,9 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
+
 import { MoreVertical, Plus, Zap, Filter } from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -31,7 +27,7 @@ const stages = [
   { id: "booked", title: "Booked", color: "bg-emerald-500" },
 ];
 
-// ---------- charts (same as yours) ----------
+// ---------- charts ----------
 const StageDistributionChart = ({ data }: { data: { stage: string; count: number }[] }) => (
   <Card className="border-none bg-muted/30">
     <CardHeader className="pb-2">
@@ -70,12 +66,7 @@ const RevenueStageChart = ({ data }: { data: { stage: string; revenue: number }[
         <ReBarChart data={data} margin={{ top: 0, right: 0, left: -10, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--muted-foreground) / 0.1)" />
           <XAxis dataKey="stage" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
-          <YAxis
-            axisLine={false}
-            tickLine={false}
-            tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-            tickFormatter={(v) => `$${v}`}
-          />
+          <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} tickFormatter={(v) => `$${v}`} />
           <Tooltip
             contentStyle={{
               backgroundColor: "hsl(var(--background))",
@@ -87,10 +78,7 @@ const RevenueStageChart = ({ data }: { data: { stage: string; revenue: number }[
           />
           <Bar dataKey="revenue" radius={[4, 4, 0, 0]} barSize={30}>
             {data.map((_, index) => (
-              <Cell
-                key={`cell-${index}`}
-                fill={index === 2 ? "hsl(var(--primary))" : "hsl(var(--muted-foreground) / 0.4)"}
-              />
+              <Cell key={`cell-${index}`} fill={index === 2 ? "hsl(var(--primary))" : "hsl(var(--muted-foreground) / 0.4)"} />
             ))}
           </Bar>
         </ReBarChart>
@@ -141,60 +129,14 @@ function formatMoney(n: number) {
   }
 }
 
-// ---------------- MAIN PAGE ----------------
-type PipelineRow = {
-  id: string;
-  lead_id: string | null;
-  stage: string;
-  value: number | null;
-  probability: number | null;
-  updated_at: string | null;
-};
-
 export function Pipeline() {
-  const { leads, loading, error, reload } = useLeads();
+  const { leads, pipelineRows, loading, error, reload } = useLeads();
 
-  const [pipelineRows, setPipelineRows] = React.useState<PipelineRow[]>([]);
-  const [pipeLoading, setPipeLoading] = React.useState(true);
-  const [pipeError, setPipeError] = React.useState<string | null>(null);
-
-  // Load pipeline table (for revenue + per-lead value)
-  React.useEffect(() => {
-    let alive = true;
-
-    async function loadPipeline() {
-      setPipeLoading(true);
-      setPipeError(null);
-
-      const { data, error } = await supabase
-        .from("pipeline")
-        .select("id, lead_id, stage, value, probability, updated_at")
-        .limit(2000);
-
-      if (!alive) return;
-
-      if (error) {
-        setPipeError(error.message);
-        setPipelineRows([]);
-      } else {
-        setPipelineRows((data as any) ?? []);
-      }
-
-      setPipeLoading(false);
-    }
-
-    loadPipeline();
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  // Map pipeline info by lead_id (so each lead card can show real value)
+  // Map pipeline info by lead_id (dedupe by latest updated_at)
   const pipelineByLeadId = React.useMemo(() => {
-    const m = new Map<string, PipelineRow>();
-    for (const row of pipelineRows) {
+    const m = new Map<string, (typeof pipelineRows)[number]>();
+    for (const row of pipelineRows ?? []) {
       if (!row.lead_id) continue;
-      // if duplicates exist, keep the latest updated_at
       const prev = m.get(row.lead_id);
       if (!prev) {
         m.set(row.lead_id, row);
@@ -207,12 +149,13 @@ export function Pipeline() {
     return m;
   }, [pipelineRows]);
 
-  // UI leads (still based on leads table stages — stable + realtime)
+  // ✅ UI leads: stage from pipeline first, fallback to leads.status
   const uiLeads = React.useMemo(() => {
     return leads.map((l) => {
-      const stage = toStageId(l.status);
       const pipe = pipelineByLeadId.get(l.id);
+      const stage = toStageId(pipe?.stage ?? l.status);
       const value = Number(pipe?.value ?? 0);
+
       return {
         id: l.id,
         name: l.name ?? "Unknown",
@@ -221,6 +164,7 @@ export function Pipeline() {
         value: `$${formatMoney(value)}`,
         time: new Date(l.created_at).toLocaleDateString(),
         stage,
+        probability: pipe?.probability ?? null,
       };
     });
   }, [leads, pipelineByLeadId]);
@@ -244,7 +188,7 @@ export function Pipeline() {
   // ✅ Real revenue by stage from pipeline table
   const revenueData = React.useMemo(() => {
     const sums: Record<string, number> = { new: 0, qualifying: 0, quoted: 0, booked: 0 };
-    for (const row of pipelineRows) {
+    for (const row of pipelineRows ?? []) {
       const stage = toStageId(row.stage);
       const v = Number(row.value ?? 0);
       sums[stage] += Number.isFinite(v) ? v : 0;
@@ -269,7 +213,9 @@ export function Pipeline() {
     return (
       <div className="p-6 space-y-3">
         <div className="text-sm text-red-500">Failed to load: {error}</div>
-        <Button onClick={reload} size="sm">Retry</Button>
+        <Button onClick={reload} size="sm">
+          Retry
+        </Button>
       </div>
     );
 
@@ -278,14 +224,7 @@ export function Pipeline() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Pipeline Operations</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Revenue flow and lead progression across all stages.
-          </p>
-          {pipeError && (
-            <div className="mt-2 text-[11px] text-red-500">
-              Pipeline table error: {pipeError}
-            </div>
-          )}
+          <p className="text-muted-foreground mt-1 text-sm">Revenue flow and lead progression across all stages.</p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -314,10 +253,7 @@ export function Pipeline() {
                 <div className="flex items-center gap-2">
                   <div className={cn("h-2 w-2 rounded-full", stage.color)} />
                   <h3 className="font-bold text-sm uppercase tracking-wider">{stage.title}</h3>
-                  <Badge
-                    variant="secondary"
-                    className="ml-1 text-[10px] h-4 px-1.5 bg-muted/50 text-muted-foreground"
-                  >
+                  <Badge variant="secondary" className="ml-1 text-[10px] h-4 px-1.5 bg-muted/50 text-muted-foreground">
                     {uiLeads.filter((l) => l.stage === stage.id).length}
                   </Badge>
                 </div>
@@ -330,20 +266,14 @@ export function Pipeline() {
                 {uiLeads
                   .filter((l) => l.stage === stage.id)
                   .map((lead) => (
-                    <Card
-                      key={lead.id}
-                      className="border-none shadow-sm hover:shadow-md transition-shadow group cursor-pointer bg-muted/10"
-                    >
+                    <Card key={lead.id} className="border-none shadow-sm hover:shadow-md transition-shadow group cursor-pointer bg-muted/10">
                       <CardContent className="p-4 space-y-3">
                         <div className="flex items-start justify-between">
                           <div>
                             <div className="text-sm font-bold leading-none mb-1">{lead.name}</div>
                             <div className="text-[10px] text-muted-foreground font-medium">{lead.company}</div>
                           </div>
-                          <Badge
-                            variant="outline"
-                            className="text-[10px] font-bold h-5 bg-background border-border/50"
-                          >
+                          <Badge variant="outline" className="text-[10px] font-bold h-5 bg-background border-border/50">
                             {lead.value}
                           </Badge>
                         </div>
