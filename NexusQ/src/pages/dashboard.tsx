@@ -1,4 +1,4 @@
-// src/pages/Dashboard.tsx (or Dashboard.jsx if you remove types)
+// src/pages/Dashboard.tsx
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useLeads } from "@/hooks/useLeads";
@@ -76,6 +76,11 @@ function toStageId(s?: string | null) {
   const v = (s ?? "new").toLowerCase().trim();
   if (v === "new" || v === "qualifying" || v === "quoted" || v === "booked") return v;
   return "new";
+}
+
+// helper: safe display name
+function isTruthyString(v: unknown) {
+  return typeof v === "string" && v.trim().length > 0 && v.trim().toLowerCase() !== "unknown";
 }
 
 // -------------------------
@@ -382,36 +387,93 @@ export function Dashboard() {
     return sorted.map(([name, value]) => ({ name: (name ?? "unknown").replace(/_/g, " "), value }));
   }, [events]);
 
-  const recentActivity = React.useMemo(() => {
-    return events.slice(0, 4).map((e) => {
-      const name = e.payload_json?.name || e.payload_json?.lead_snapshot?.name || e.payload_json?.lead?.name || "Unknown";
+  // ✅ FIX: build a reliable lookup map from leads -> name
+  // (your version had `l.name || l.name` and no typing; also guard empty strings)
+  const leadNameById = React.useMemo(() => {
+    const m = new Map<string, string>();
+    for (const l of leads ?? []) {
+      const nm =
+        (typeof (l as any).name === "string" && (l as any).name.trim()) ||
+        (typeof (l as any).full_name === "string" && (l as any).full_name.trim()) ||
+        (typeof (l as any).first_name === "string" && (l as any).first_name.trim()) ||
+        "";
+      m.set((l as any).id, nm || "Unknown");
+    }
+    return m;
+  }, [leads]);
 
-      const actionMap: Record<string, string> = {
-        lead_created: "Requested Service",
-        status_changed: "Status Updated",
-        call_logged: "Call Logged",
-        note_added: "Note Added",
-      };
+  // ✅ FIX: smarter name resolution for events (covers lead_events payload patterns)
+  const recentActivity = React.useMemo(() => {
+    const actionMap: Record<string, string> = {
+      lead_created: "Requested Service",
+      status_changed: "Status Updated",
+      call_logged: "Call Logged",
+      note_added: "Note Added",
+      first_response_sent: "Instant Response Sent",
+    };
+
+    const getNameFromEvent = (e: any) => {
+      const candidates = [
+        e?.payload_json?.name,
+        e?.payload_json?.full_name,
+        e?.payload_json?.lead_snapshot?.name,
+        e?.payload_json?.lead_snapshot?.full_name,
+        e?.payload_json?.lead?.name,
+        e?.payload_json?.lead?.full_name,
+        e?.payload_json?.raw?.name, // 👈 your payload_json.raw.name exists
+      ];
+
+      for (const c of candidates) {
+        if (isTruthyString(c)) return String(c).trim();
+      }
+
+      // try to resolve by lead_id
+      const leadId =
+        e?.lead_id ||
+        e?.payload_json?.lead_id ||
+        e?.payload_json?.lead?.id ||
+        e?.payload_json?.lead_snapshot?.id ||
+        null;
+
+      if (leadId && leadNameById.has(String(leadId))) {
+        const v = leadNameById.get(String(leadId));
+        if (isTruthyString(v)) return v!;
+      }
+
+      // last resort: show phone if available (better than Unknown)
+      const phone =
+        e?.payload_json?.phone ||
+        e?.payload_json?.raw?.phone ||
+        e?.payload_json?.raw?.phone_raw ||
+        null;
+
+      if (isTruthyString(phone)) return String(phone).trim();
+
+      return "Unknown";
+    };
+
+    return (events ?? []).slice(0, 4).map((e: any) => {
+      const user = getNameFromEvent(e);
 
       return {
         id: e.id,
         type: "lead" as const,
-        user: name,
+        user,
         action: actionMap[e.event_type] ?? (e.event_type ?? "unknown").replace(/_/g, " "),
         time: new Date(e.created_at).toLocaleString(),
         status: e.payload_json?.status ?? "New",
       };
     });
-  }, [events]);
+  }, [events, leadNameById]);
 
   const leadsCaptured = leads.length;
-  const bookedCount = leads.filter((l) => normStatus(l.status) === "booked").length;
-  const quotedCount = leads.filter((l) => normStatus(l.status) === "quoted").length;
+  const bookedCount = leads.filter((l: any) => normStatus(l.status) === "booked").length;
+  const quotedCount = leads.filter((l: any) => normStatus(l.status) === "quoted").length;
 
   const avgResponseToday = React.useMemo(() => {
     const today = new Date();
     const mins: number[] = [];
-    for (const l of leads) {
+    for (const l of leads as any[]) {
       const created = new Date(l.created_at);
       if (!isSameDay(created, today)) continue;
       const m = minutesBetween(l.created_at, l.last_contacted_at);
@@ -433,8 +495,8 @@ export function Dashboard() {
   // For “System Intelligence” card: prefer pipeline new-stage count if available
   const newPipelineCount = React.useMemo(() => {
     const rows = pipelineRows ?? [];
-    if (!rows.length) return leads.filter((l) => normStatus(l.status) === "new").length;
-    return rows.filter((r) => toStageId(r.stage) === "new").length;
+    if (!rows.length) return leads.filter((l: any) => normStatus(l.status) === "new").length;
+    return rows.filter((r: any) => toStageId(r.stage) === "new").length;
   }, [pipelineRows, leads]);
 
   if (loading) return <div className="p-6 text-sm text-muted-foreground">Loading…</div>;
