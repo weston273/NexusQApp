@@ -504,7 +504,7 @@ export function Dashboard() {
     return (
       <div className="p-6 space-y-3">
         <div className="text-sm text-red-500">Failed to load: {error}</div>
-        <Button onClick={reload} size="sm">
+       <Button onClick={() => reload()} size="sm">
           Retry
         </Button>
       </div>
@@ -523,7 +523,7 @@ export function Dashboard() {
           <Button variant="outline" size="sm" onClick={() => navigate("/intake")} className="gap-2">
             Add Lead <ArrowRight className="h-3 w-3" />
           </Button>
-          <Button size="sm" onClick={reload}>
+          <Button size="sm" onClick={() => reload()}>
             Refresh
           </Button>
         </div>

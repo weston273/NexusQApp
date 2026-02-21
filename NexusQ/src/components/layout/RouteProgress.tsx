@@ -36,10 +36,13 @@ export default function RouteProgress() {
   }, [location.pathname, run]);
 
   // 2) Manual triggers (Supabase fetch/realtime)
-  React.useEffect(() => {
-    const off = onProgress((ms) => run(ms ?? 550));
-    return off; // off is () => void ✅
-  }, [run]);
+ // 2) Manual triggers (Supabase fetch/realtime)
+React.useEffect(() => {
+  const off = onProgress((ms) => run(ms ?? 550));
+  return () => {
+    off(); // ✅ unsubscribe
+  };
+}, [run]);
 
   return (
     <AnimatePresence>

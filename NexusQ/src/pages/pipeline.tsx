@@ -350,7 +350,7 @@ export function Pipeline() {
     return (
       <div className="p-6 space-y-3">
         <div className="text-sm text-red-500">Failed to load: {error}</div>
-        <Button onClick={reload} size="sm">
+        <Button onClick={() => reload()} size="sm">
           Retry
         </Button>
       </div>
@@ -366,7 +366,7 @@ export function Pipeline() {
           </div>
 
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="h-9 gap-2" onClick={reload}>
+            <Button variant="outline" size="sm" className="h-9 gap-2" onClick={() => reload()}>
               <Filter className="h-4 w-4" />
               Refresh
             </Button>
