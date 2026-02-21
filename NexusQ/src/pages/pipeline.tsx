@@ -1,5 +1,6 @@
 // src/pages/Pipeline.tsx
 import React from "react";
+import { useNavigate } from "react-router-dom";
 import { useLeads } from "@/hooks/useLeads";
 
 import {
@@ -55,8 +56,18 @@ const StageDistributionChart = ({ data }: { data: { stage: string; count: number
       <ResponsiveContainer width="100%" height="100%">
         <ReBarChart data={data} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--muted-foreground) / 0.1)" />
-          <XAxis dataKey="stage" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
-          <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} allowDecimals={false} />
+          <XAxis
+            dataKey="stage"
+            axisLine={false}
+            tickLine={false}
+            tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+          />
+          <YAxis
+            axisLine={false}
+            tickLine={false}
+            tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+            allowDecimals={false}
+          />
           <Tooltip
             contentStyle={{
               backgroundColor: "hsl(var(--background))",
@@ -82,8 +93,18 @@ const RevenueStageChart = ({ data }: { data: { stage: string; revenue: number }[
       <ResponsiveContainer width="100%" height="100%">
         <ReBarChart data={data} margin={{ top: 0, right: 0, left: -10, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--muted-foreground) / 0.1)" />
-          <XAxis dataKey="stage" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
-          <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} tickFormatter={(v) => `$${v}`} />
+          <XAxis
+            dataKey="stage"
+            axisLine={false}
+            tickLine={false}
+            tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+          />
+          <YAxis
+            axisLine={false}
+            tickLine={false}
+            tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+            tickFormatter={(v) => `$${v}`}
+          />
           <Tooltip
             contentStyle={{
               backgroundColor: "hsl(var(--background))",
@@ -95,7 +116,10 @@ const RevenueStageChart = ({ data }: { data: { stage: string; revenue: number }[
           />
           <Bar dataKey="revenue" radius={[4, 4, 0, 0]} barSize={30}>
             {data.map((_, index) => (
-              <Cell key={`cell-${index}`} fill={index === 2 ? "hsl(var(--primary))" : "hsl(var(--muted-foreground) / 0.4)"} />
+              <Cell
+                key={`cell-${index}`}
+                fill={index === 2 ? "hsl(var(--primary))" : "hsl(var(--muted-foreground) / 0.4)"}
+              />
             ))}
           </Bar>
         </ReBarChart>
@@ -115,7 +139,13 @@ const PipelineFlowChart = ({ data }: { data: { stage: string; value: number }[] 
         <ReBarChart data={data} layout="vertical" margin={{ top: 0, right: 30, left: 40, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--muted-foreground) / 0.1)" />
           <XAxis type="number" hide />
-          <YAxis dataKey="stage" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
+          <YAxis
+            dataKey="stage"
+            type="category"
+            axisLine={false}
+            tickLine={false}
+            tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+          />
           <Tooltip
             contentStyle={{
               backgroundColor: "hsl(var(--background))",
@@ -148,7 +178,6 @@ function formatMoney(n: number) {
 }
 
 function parseMoneyInput(v: string) {
-  // accepts "2,500" or "2500" or "$2500"
   const cleaned = String(v ?? "").replace(/[^\d.]/g, "");
   const num = Number(cleaned);
   if (!Number.isFinite(num)) return 0;
@@ -159,26 +188,24 @@ function parseMoneyInput(v: string) {
 async function callWorkflowD(args: { lead_id: string; status: StageId; value?: number | null }) {
   const url =
     (import.meta as any)?.env?.VITE_WORKFLOW_D_URL ||
-    "https://n8n-k7j4.onrender.com/webhook/pipeline-update"; // set your prod url in env
-
+    "https://n8n-k7j4.onrender.com/webhook/pipeline-update";
 
   const payload = {
-  lead_id: args.lead_id,
-  status: args.status,
-  value: args.value ?? null,
-};
+    lead_id: args.lead_id,
+    status: args.status,
+    value: args.value ?? null,
+  };
 
   const res = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      // ...(clientKey ? { "x-client-key": clientKey } : {}),
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
 
   const data = await res.json().catch(() => ({}));
 
+  // If your workflow returns {ok:true} on success, this is correct.
+  // (Right now it likely fails due to missing client_key until you tweak Workflow D.)
   if (!res.ok || !data?.ok) {
     throw new Error(data?.error || `Workflow D failed (${res.status})`);
   }
@@ -187,6 +214,7 @@ async function callWorkflowD(args: { lead_id: string; status: StageId; value?: n
 }
 
 export function Pipeline() {
+  const navigate = useNavigate();
   const { leads, pipelineRows, loading, error, reload } = useLeads();
 
   // --- Modal state ---
@@ -213,24 +241,30 @@ export function Pipeline() {
         m.set(row.lead_id, row);
         continue;
       }
-      const a = new Date(prev.updated_at ?? 0).getTime();
-      const b = new Date(row.updated_at ?? 0).getTime();
+      const a = new Date((prev as any).updated_at ?? 0).getTime();
+      const b = new Date((row as any).updated_at ?? 0).getTime();
       if (b >= a) m.set(row.lead_id, row);
     }
     return m;
   }, [pipelineRows]);
 
-  // ✅ UI leads: stage from pipeline first, fallback to leads.status
+  // UI leads: stage from pipeline first, fallback to leads.status
   const uiLeads = React.useMemo(() => {
-    return leads.map((l) => {
-      const pipe = pipelineByLeadId.get(l.id);
+    return (leads ?? []).map((l: any) => {
+      const pipe: any = pipelineByLeadId.get(l.id);
       const stage = toStageId(pipe?.stage ?? l.status);
       const value = Number(pipe?.value ?? 0);
 
+      const safeName =
+        (typeof l.name === "string" && l.name.trim()) ||
+        (typeof l.full_name === "string" && l.full_name.trim()) ||
+        (typeof l.phone === "string" && l.phone.trim()) ||
+        "Unknown";
+
       return {
         id: l.id,
-        name: l.name ?? "Unknown",
-        company: l.service ? l.service.toUpperCase() : "SERVICE",
+        name: safeName,
+        company: l.service ? String(l.service).toUpperCase() : "SERVICE",
         valueNum: Number.isFinite(value) ? value : 0,
         value: `$${formatMoney(Number.isFinite(value) ? value : 0)}`,
         time: new Date(l.created_at).toLocaleDateString(),
@@ -256,12 +290,12 @@ export function Pipeline() {
     { stage: "Booked", count: stageCounts.booked },
   ];
 
-  // ✅ Real revenue by stage from pipeline table
+  // Real revenue by stage from pipeline table
   const revenueData = React.useMemo(() => {
     const sums: Record<StageId, number> = { new: 0, qualifying: 0, quoted: 0, booked: 0 };
     for (const row of pipelineRows ?? []) {
-      const stage = toStageId(row.stage);
-      const v = Number(row.value ?? 0);
+      const stage = toStageId((row as any).stage);
+      const v = Number((row as any).value ?? 0);
       sums[stage] += Number.isFinite(v) ? v : 0;
     }
     return [
@@ -302,9 +336,8 @@ export function Pipeline() {
       toast.success("Pipeline updated");
       setOpen(false);
 
-      // No manual setState required: your realtime subscription will reload.
-      // But if you want instant UX even when realtime is off, uncomment:
-      // reload({ silent: true } as any);
+      // realtime should refresh; but fallback:
+      // reload();
     } catch (e: any) {
       toast.error(e?.message || "Failed to update pipeline");
     } finally {
@@ -333,11 +366,11 @@ export function Pipeline() {
           </div>
 
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="h-9 gap-2">
+            <Button variant="outline" size="sm" className="h-9 gap-2" onClick={reload}>
               <Filter className="h-4 w-4" />
-              Filter
+              Refresh
             </Button>
-            <Button size="sm" className="h-9 gap-2">
+            <Button size="sm" className="h-9 gap-2" onClick={() => navigate("/intake")}>
               <Plus className="h-4 w-4" />
               Add Lead
             </Button>
@@ -358,7 +391,10 @@ export function Pipeline() {
                   <div className="flex items-center gap-2">
                     <div className={cn("h-2 w-2 rounded-full", stage.color)} />
                     <h3 className="font-bold text-sm uppercase tracking-wider">{stage.title}</h3>
-                    <Badge variant="secondary" className="ml-1 text-[10px] h-4 px-1.5 bg-muted/50 text-muted-foreground">
+                    <Badge
+                      variant="secondary"
+                      className="ml-1 text-[10px] h-4 px-1.5 bg-muted/50 text-muted-foreground"
+                    >
                       {uiLeads.filter((l) => l.stage === stage.id).length}
                     </Badge>
                   </div>
@@ -402,6 +438,7 @@ export function Pipeline() {
                   <Button
                     variant="ghost"
                     className="w-full border-2 border-dashed border-border/20 h-12 text-muted-foreground text-xs hover:border-border/50 hover:bg-muted/5"
+                    onClick={() => navigate("/intake")}
                   >
                     <Plus className="h-3 w-3 mr-2" />
                     Add Lead
@@ -421,6 +458,10 @@ export function Pipeline() {
             <DialogTitle>Update Pipeline</DialogTitle>
             <DialogDescription>
               Edit the stage and quote/value for this lead. Saving will sync through Workflow D.
+              <br />
+              <span className="text-xs text-muted-foreground">
+                If you still get “Missing client_key”, tweak Workflow D to stop requiring it.
+              </span>
             </DialogDescription>
           </DialogHeader>
 
