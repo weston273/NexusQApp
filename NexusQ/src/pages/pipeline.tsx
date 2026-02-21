@@ -188,7 +188,7 @@ function parseMoneyInput(v: string) {
 async function callWorkflowD(args: { lead_id: string; status: StageId; value?: number | null }) {
   const url =
     (import.meta as any)?.env?.VITE_WORKFLOW_D_URL ||
-    "https://n8n-k7j4.onrender.com/webhook/pipeline-update";
+    "https://n8n-k7j4.onrender.com/webhook-test/pipeline-update";
 
   const payload = {
     lead_id: args.lead_id,
