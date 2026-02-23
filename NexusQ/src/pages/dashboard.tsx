@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-
+// import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import {
   AreaChart,
   Area,
@@ -74,7 +74,15 @@ function normStatus(s?: string | null) {
 
 function toStageId(s?: string | null) {
   const v = (s ?? "new").toLowerCase().trim();
+
+  // direct matches
   if (v === "new" || v === "qualifying" || v === "quoted" || v === "booked") return v;
+
+  // synonyms / backend event-style statuses
+  if (v.includes("inspect") || v.includes("qualif") || v.includes("schedule")) return "qualifying";
+  if (v.includes("quote") || v.includes("quoted") || v.includes("sent")) return "quoted";
+  if (v.includes("book") || v.includes("won") || v.includes("deal")) return "booked";
+
   return "new";
 }
 
@@ -86,6 +94,7 @@ function isTruthyString(v: unknown) {
 // -------------------------
 // Charts (data via props)
 // -------------------------
+
 function PipelineSummaryFunnel({
   data,
   totalValue,
@@ -95,69 +104,61 @@ function PipelineSummaryFunnel({
   totalValue: number;
   onViewPipeline: () => void;
 }) {
-  const COLORS = [
-    "hsl(var(--chart-1))",
-    "hsl(var(--chart-3))",
-    "hsl(var(--chart-4))",
-    "hsl(var(--chart-2))",
-    "hsl(var(--chart-5))",
-  ];
+  const cleanData = data.map((d) => ({
+    stage: d.name.split(":")[0], // "New Lead"
+    count: d.value,
+  }));
 
   return (
-    <Card className="border-none bg-muted/20">
+    <Card className="border border-border/40 bg-card">
       <CardHeader className="flex flex-row items-center justify-between gap-4">
         <div>
           <CardTitle className="text-lg">Pipeline Summary</CardTitle>
-          <CardDescription>Live funnel breakdown and pipeline value.</CardDescription>
+          <CardDescription>Live breakdown across stages.</CardDescription>
         </div>
+
         <Button variant="outline" size="sm" onClick={onViewPipeline} className="gap-2">
           View Pipeline <ArrowRight className="h-3 w-3" />
         </Button>
       </CardHeader>
 
-      <CardContent className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr] items-center">
-        <div className="h-[260px] w-full">
+      <CardContent className="grid gap-6 lg:grid-cols-[1.4fr_0.6fr] items-center">
+        {/* chart */}
+        <div className="h-[260px] w-full rounded-xl border bg-muted/20 p-3">
           <ResponsiveContainer width="100%" height="100%">
-            <FunnelChart>
+            <BarChart data={cleanData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--muted-foreground) / 0.15)" />
+              <XAxis dataKey="stage" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} />
+              <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: "hsl(var(--card))",
-                  borderColor: "hsl(var(--border))",
-                  borderRadius: "8px",
+                  backgroundColor: "hsl(var(--background))",
+                  border: "1px solid hsl(var(--border))",
+                  borderRadius: "10px",
                   fontSize: "12px",
                 }}
               />
-              <Funnel dataKey="value" data={data} isAnimationActive>
-                <LabelList
-                  position="right"
-                  dataKey="name"
-                  fill="hsl(var(--foreground))"
-                  style={{ fontSize: 12, fontWeight: 700 }}
-                />
-                {data.map((_, i) => (
-                  <Cell key={`f-${i}`} fill={COLORS[i % COLORS.length]} />
-                ))}
-              </Funnel>
-            </FunnelChart>
+              <Bar dataKey="count" radius={[8, 8, 0, 0]} fill="hsl(var(--primary))" />
+            </BarChart>
           </ResponsiveContainer>
         </div>
 
+        {/* totals */}
         <div className="space-y-3">
-          <div className="space-y-2">
-            {data.map((row) => (
-              <div
-                key={row.name}
-                className="flex items-center justify-between border-b border-border/40 pb-2 last:border-0 last:pb-0"
-              >
-                <div className="text-sm text-muted-foreground font-medium">{row.name}</div>
-                <div className="text-lg font-bold">{row.value}</div>
-              </div>
-            ))}
+          <div className="rounded-xl border bg-muted/10 p-4">
+            <div className="text-xs font-bold uppercase tracking-widest text-muted-foreground/70">
+              Total Pipeline Value
+            </div>
+            <div className="mt-2 text-3xl font-bold">${money(totalValue)}</div>
           </div>
 
-          <div className="rounded-xl bg-background/60 border p-4">
-            <div className="text-xs font-bold uppercase tracking-widest text-muted-foreground/70">Total Pipeline Value</div>
-            <div className="mt-2 text-2xl font-bold">${money(totalValue)}</div>
+          <div className="space-y-2">
+            {cleanData.map((r) => (
+              <div key={r.stage} className="flex items-center justify-between rounded-lg border bg-background p-3">
+                <span className="text-sm font-medium text-muted-foreground">{r.stage}</span>
+                <span className="text-lg font-bold">{r.count}</span>
+              </div>
+            ))}
           </div>
         </div>
       </CardContent>

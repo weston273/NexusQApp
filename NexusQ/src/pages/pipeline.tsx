@@ -114,14 +114,7 @@ const RevenueStageChart = ({ data }: { data: { stage: string; revenue: number }[
             itemStyle={{ color: "hsl(var(--primary))" }}
             formatter={(value) => [`$${value}`, "Revenue"]}
           />
-          <Bar dataKey="revenue" radius={[4, 4, 0, 0]} barSize={30}>
-            {data.map((_, index) => (
-              <Cell
-                key={`cell-${index}`}
-                fill={index === 2 ? "hsl(var(--primary))" : "hsl(var(--muted-foreground) / 0.4)"}
-              />
-            ))}
-          </Bar>
+          <Bar dataKey="revenue" fill="hsl(var(--primary))" radius={[6, 6, 0, 0]} barSize={30} />
         </ReBarChart>
       </ResponsiveContainer>
     </CardContent>
@@ -162,9 +155,17 @@ const PipelineFlowChart = ({ data }: { data: { stage: string; value: number }[] 
 );
 
 // ---------- helpers ----------
-function toStageId(s?: string | null): StageId {
+function toStageId(s?: string | null) {
   const v = (s ?? "new").toLowerCase().trim();
+
+  // direct matches
   if (v === "new" || v === "qualifying" || v === "quoted" || v === "booked") return v;
+
+  // synonyms / backend event-style statuses
+  if (v.includes("inspect") || v.includes("qualif") || v.includes("schedule")) return "qualifying";
+  if (v.includes("quote") || v.includes("quoted") || v.includes("sent")) return "quoted";
+  if (v.includes("book") || v.includes("won") || v.includes("deal")) return "booked";
+
   return "new";
 }
 
@@ -188,7 +189,7 @@ function parseMoneyInput(v: string) {
 async function callWorkflowD(args: { lead_id: string; status: StageId; value?: number | null }) {
   const url =
     (import.meta as any)?.env?.VITE_WORKFLOW_D_URL ||
-    "https://n8n-k7j4.onrender.com/webhook-test/pipeline-update";
+    "https://n8n-k7j4.onrender.com/webhook/pipeline-update" || "https://n8n-k7j4.onrender.com/webhook-test/pipeline-update";
 
   const payload = {
     lead_id: args.lead_id,
@@ -335,6 +336,7 @@ export function Pipeline() {
 
       toast.success("Pipeline updated");
       setOpen(false);
+      await reload();
 
       // realtime should refresh; but fallback:
       // reload();
