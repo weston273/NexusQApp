@@ -459,10 +459,10 @@ export function Pipeline() {
           <DialogHeader>
             <DialogTitle>Update Pipeline</DialogTitle>
             <DialogDescription>
-              Edit the stage and quote/value for this lead. Saving will sync through Workflow D.
+              Edit the stage and quote/value for this lead. Saving will sync with the database.
               <br />
               <span className="text-xs text-muted-foreground">
-                If you still get “Missing client_key”, tweak Workflow D to stop requiring it.
+                If you still get “Missing client_key”, tough.
               </span>
             </DialogDescription>
           </DialogHeader>
