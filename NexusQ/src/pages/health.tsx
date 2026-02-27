@@ -5,11 +5,11 @@ import {
   Globe,
   Database,
   Activity,
-  Zap,
   Server,
   Cloud,
   CheckCircle2,
   AlertTriangle,
+  Zap,
 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -39,9 +39,8 @@ type HealthPayload = {
   generated_at: string;
 };
 
-// Try test first (dev), then prod (when published)
+// ✅ IMPORTANT: only use /webhook for real frontend usage
 const HEALTH_URLS = [
-  "https://n8n-k7j4.onrender.com/webhook-test/health-status",
   "https://n8n-k7j4.onrender.com/webhook/health-status",
 ];
 
@@ -66,37 +65,72 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
+// Backend stale threshold ~90m
 function freshnessPercent(minutesSince: number | null) {
-  // MVP: treat 0m => 100%, 100m => 0%
   if (minutesSince == null) return 0;
-  return clamp(100 - minutesSince, 0, 100);
+  return clamp(100 - (minutesSince / 90) * 100, 0, 100);
 }
 
 function pickIcon(serviceName: string) {
-  const n = (serviceName || "").toLowerCase();
+  const n = (serviceName || "").toLowerCase().trim();
 
-  // Adjust these to match your workflow names
-  if (n.includes("workflow a") || n.includes("intake") || n.includes("normal")) return ShieldCheck;
-  if (n.includes("workflow b") || n.includes("speed") || n.includes("response")) return Cpu;
-  if (n.includes("workflow c") || n.includes("follow")) return Globe;
-  if (n.includes("workflow d") || n.includes("pipeline") || n.includes("booking")) return Database;
+  if (n.startsWith("a") || n.includes("workflow a") || n.includes("intake") || n.includes("normal")) return ShieldCheck;
+  if (n.startsWith("b") || n.includes("workflow b") || n.includes("speed") || n.includes("response")) return Cpu;
+  if (n.startsWith("c") || n.includes("workflow c") || n.includes("follow")) return Globe;
+  if (n.startsWith("d") || n.includes("workflow d") || n.includes("pipeline") || n.includes("booking")) return Database;
 
   return Activity;
 }
 
+async function fetchWithTimeout(url: string, ms = 12000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+
+  try {
+    const bust = url.includes("?") ? "&" : "?";
+    const finalUrl = `${url}${bust}t=${Date.now()}`;
+
+    const res = await fetch(finalUrl, {
+      method: "GET",
+      signal: ctrl.signal,
+      mode: "cors",
+      cache: "no-store",
+    });
+
+    return res;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 async function fetchHealthStatus(): Promise<HealthPayload> {
-  const results = await Promise.allSettled(HEALTH_URLS.map((url) => fetch(url, { method: "GET" })));
+  const results = await Promise.allSettled(
+    HEALTH_URLS.map((url) => fetchWithTimeout(url, 12000))
+  );
 
   const okRes = results.find((r) => r.status === "fulfilled" && r.value.ok);
-  if (!okRes || okRes.status !== "fulfilled") throw new Error("Health endpoint unreachable");
+
+  if (!okRes || okRes.status !== "fulfilled") {
+    const reasons = results.map((r, i) => {
+      const u = HEALTH_URLS[i];
+      if (r.status === "rejected") return `${u}: ${String(r.reason)}`;
+      return `${u}: HTTP ${r.value.status}`;
+    });
+    throw new Error(`Health endpoint unreachable. ${reasons.join(" | ")}`);
+  }
 
   const data = (await okRes.value.json()) as HealthPayload;
   if (!data?.ok) throw new Error("Health endpoint returned ok=false");
 
-  return data;
+  return {
+    ok: true,
+    allOperational: !!data.allOperational,
+    services: Array.isArray(data.services) ? data.services : [],
+    logs: Array.isArray(data.logs) ? data.logs : [],
+    generated_at: data.generated_at || new Date().toISOString(),
+  };
 }
 
-// Dedupe services by name (keep the newest / best)
 function dedupeServices(list: HealthService[]) {
   const map = new Map<string, HealthService>();
 
@@ -109,7 +143,6 @@ function dedupeServices(list: HealthService[]) {
       continue;
     }
 
-    // keep whichever has the most recent last_run_at
     const a = prev.last_run_at ? new Date(prev.last_run_at).getTime() : 0;
     const b = s.last_run_at ? new Date(s.last_run_at).getTime() : 0;
     map.set(s.name, b >= a ? s : prev);
@@ -118,7 +151,6 @@ function dedupeServices(list: HealthService[]) {
   return Array.from(map.values());
 }
 
-// Dedupe logs by a stable key
 function dedupeLogs(list: HealthLog[]) {
   const seen = new Set<string>();
   const out: HealthLog[] = [];
@@ -130,14 +162,12 @@ function dedupeLogs(list: HealthLog[]) {
     out.push(l);
   }
 
-  // newest first if time exists
   out.sort((a, b) => {
     const ta = a.time ? new Date(a.time).getTime() : 0;
     const tb = b.time ? new Date(b.time).getTime() : 0;
     return tb - ta;
   });
 
-  // keep it tight
   return out.slice(0, 30);
 }
 
@@ -146,21 +176,17 @@ export function Health() {
   const [payload, setPayload] = React.useState<HealthPayload | null>(null);
   const [err, setErr] = React.useState<string | null>(null);
 
-  const load = React.useCallback(async () => {
+  const run = React.useCallback(async () => {
     setLoading(true);
-    setErr(null);
 
     try {
       const data = await fetchHealthStatus();
-
-      // ✅ dedupe to avoid duplicates on UI
-      const safe: HealthPayload = {
+      setPayload({
         ...data,
         services: dedupeServices(data.services ?? []),
         logs: dedupeLogs(data.logs ?? []),
-      };
-
-      setPayload(safe);
+      });
+      setErr(null);
     } catch (e: any) {
       setErr(e?.message || "Failed to fetch health");
       setPayload(null);
@@ -172,32 +198,22 @@ export function Health() {
   React.useEffect(() => {
     let mounted = true;
 
-    (async () => {
-      try {
-        const data = await fetchHealthStatus();
-        if (!mounted) return;
+    const tick = async () => {
+      if (!mounted) return;
+      await run();
+    };
 
-        setPayload({
-          ...data,
-          services: dedupeServices(data.services ?? []),
-          logs: dedupeLogs(data.logs ?? []),
-        });
-      } catch (e: any) {
-        if (mounted) setErr(e?.message || "Failed to fetch health");
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    })();
+    tick();
 
     const t = setInterval(() => {
-      load().catch(() => {});
+      tick().catch(() => {});
     }, 15000);
 
     return () => {
       mounted = false;
       clearInterval(t);
     };
-  }, [load]);
+  }, [run]);
 
   const services = payload?.services ?? [];
   const logs = payload?.logs ?? [];
@@ -231,7 +247,7 @@ export function Health() {
         <div className="rounded-xl border p-4 text-sm">
           <div className="text-red-500 font-bold">Health API Error</div>
           <div className="text-muted-foreground mt-1">{err}</div>
-          <button className="mt-3 underline text-sm" onClick={load}>
+          <button className="mt-3 underline text-sm" onClick={() => run()}>
             Retry
           </button>
         </div>
@@ -265,12 +281,14 @@ export function Health() {
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between text-[10px] font-bold">
                     <span className="opacity-60 uppercase">Freshness</span>
-                    <span>{service.minutes_since == null ? "—" : `${freshness}%`}</span>
+                    <span>{service.minutes_since == null ? "—" : `${Math.round(freshness)}%`}</span>
                   </div>
                   <Progress value={freshness} className="h-1" />
                 </div>
 
-                {service.error ? <div className="text-[10px] text-status-warning leading-snug">{service.error}</div> : null}
+                {service.error ? (
+                  <div className="text-[10px] text-status-warning leading-snug">{service.error}</div>
+                ) : null}
               </CardContent>
             </Card>
           );
@@ -286,7 +304,10 @@ export function Health() {
           <CardContent>
             <div className="space-y-0 font-mono text-xs">
               {logs.map((log, i) => (
-                <div key={`${log.time ?? "na"}-${log.source}-${i}`} className="flex items-start gap-4 py-3 border-b border-border/50 last:border-0">
+                <div
+                  key={`${log.time ?? "na"}-${log.source}-${i}`}
+                  className="flex items-start gap-4 py-3 border-b border-border/50 last:border-0"
+                >
                   <span className="text-muted-foreground/60 w-44 flex-shrink-0">
                     {log.time ? new Date(log.time).toLocaleString() : "—"}
                   </span>
@@ -300,7 +321,10 @@ export function Health() {
                     )}
                     <span>{log.event}</span>
                   </div>
-                  <Badge variant="secondary" className="text-[9px] font-bold uppercase tracking-widest h-5 px-1.5 bg-background border">
+                  <Badge
+                    variant="secondary"
+                    className="text-[9px] font-bold uppercase tracking-widest h-5 px-1.5 bg-background border"
+                  >
                     {log.source}
                   </Badge>
                 </div>
