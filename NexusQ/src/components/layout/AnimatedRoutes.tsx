@@ -6,6 +6,7 @@ import { Dashboard } from "@/pages/dashboard";
 import { Pipeline } from "@/pages/pipeline";
 import { LeadIntake } from "@/pages/intake";
 import { Health } from "@/pages/health";
+import { SettingsPage } from "@/pages/settings";
 
 const pageVariants = {
   initial: { opacity: 0, y: 10, filter: "blur(4px)" },
@@ -60,9 +61,8 @@ function AnimatedRoutes() {
               animate="animate"
               exit="exit"
               transition={{ duration: 0.25, ease: "easeOut" }}
-              className="p-8 text-center text-muted-foreground"
             >
-              Settings module under development.
+              <SettingsPage />
             </motion.div>
           }
         />
