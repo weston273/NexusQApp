@@ -14,7 +14,7 @@ import {
   Cell,
 } from "recharts";
 
-import { MoreVertical, Plus, Zap, Filter } from "lucide-react";
+import { MoreVertical, Plus, Zap, Filter, Settings } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -368,6 +368,10 @@ export function Pipeline() {
           </div>
 
           <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="h-9 gap-2" onClick={() => navigate("/settings")}>
+              <Settings className="h-4 w-4" />
+              Settings
+            </Button>
             <Button variant="outline" size="sm" className="h-9 gap-2" onClick={() => reload()}>
               <Filter className="h-4 w-4" />
               Refresh
@@ -400,7 +404,12 @@ export function Pipeline() {
                       {uiLeads.filter((l) => l.stage === stage.id).length}
                     </Badge>
                   </div>
-                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => toast.info(`${stage.title} actions are available in the lead cards below.`)}
+                  >
                     <MoreVertical className="h-4 w-4 text-muted-foreground" />
                   </Button>
                 </div>

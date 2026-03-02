@@ -1,4 +1,5 @@
 import { Bell, Search, Activity, ChevronDown, User, Settings, LogOut, Command } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 // import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -19,8 +20,8 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { Input } from '@/components/ui/input'
-import { Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { toast } from 'sonner'
 
 
 export function Header({
@@ -28,6 +29,11 @@ export function Header({
 }: {
   onToggleSidebar: () => void
 }) {
+  const navigate = useNavigate()
+
+  const runSearch = () => {
+    navigate('/pipeline')
+  }
  
   return (
     <TooltipProvider>
@@ -94,6 +100,7 @@ export function Header({
                   variant="ghost"
                   size="icon"
                   className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted/50 lg:hidden"
+                  onClick={runSearch}
                 >
                   <Search className="h-4 w-4" />
                 </Button>
@@ -109,6 +116,7 @@ export function Header({
                   variant="ghost"
                   size="icon"
                   className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted/50 hidden md:flex"
+                  onClick={() => navigate('/health')}
                 >
                   <Activity className="h-4 w-4" />
                 </Button>
@@ -124,6 +132,7 @@ export function Header({
                   variant="ghost"
                   size="icon"
                   className="relative h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                  onClick={() => navigate('/health')}
                 >
                   <Bell className="h-4 w-4" />
                   <span className="absolute top-2.5 right-2.5 h-1.5 w-1.5 rounded-full bg-status-success animate-pulse" />
@@ -133,6 +142,22 @@ export function Header({
                 <p>Notifications</p>
               </TooltipContent>
             </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                  onClick={() => navigate('/settings')}
+                >
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p>Settings</p>
+              </TooltipContent>
+            </Tooltip>
+
           </div>
 
           {/* Divider */}
@@ -167,16 +192,19 @@ export function Header({
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="gap-2 cursor-pointer">
+              <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => navigate('/settings')}>
                 <User className="h-4 w-4" />
                 <span>Profile Settings</span>
               </DropdownMenuItem>
-              <DropdownMenuItem className="gap-2 cursor-pointer">
+              <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => navigate('/settings')}>
                 <Settings className="h-4 w-4" />
                 <span>System Config</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="gap-2 cursor-pointer text-destructive focus:text-destructive">
+              <DropdownMenuItem
+                className="gap-2 cursor-pointer text-destructive focus:text-destructive"
+                onClick={() => toast.info('Sign out is not configured yet.')}
+              >
                 <LogOut className="h-4 w-4" />
                 <span>Sign Out</span>
               </DropdownMenuItem>

@@ -1,4 +1,5 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
 import {
   ShieldCheck,
   Cpu,
@@ -10,11 +11,14 @@ import {
   CheckCircle2,
   AlertTriangle,
   Zap,
+  Settings,
+  RefreshCcw,
 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Button } from "@/components/ui/button";
 
 type HealthService = {
   name: string;
@@ -39,15 +43,11 @@ type HealthPayload = {
   generated_at: string;
 };
 
-// ✅ IMPORTANT: only use /webhook for real frontend usage
 const HEALTH_URLS = [
   "https://n8n-k7j4.onrender.com/webhook/health-status",
   "https://n8n-k7j4.onrender.com/webhook-test/health-status",
 ];
 
-// -------------------------
-// helpers
-// -------------------------
 function statusBadgeVariant(s: HealthService["status"]) {
   if (s === "optimal") return "outline";
   if (s === "stale") return "secondary";
@@ -66,7 +66,6 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
-// Backend stale threshold ~90m
 function freshnessPercent(minutesSince: number | null) {
   if (minutesSince == null) return 0;
   return clamp(100 - (minutesSince / 90) * 100, 0, 100);
@@ -105,10 +104,7 @@ async function fetchWithTimeout(url: string, ms = 12000) {
 }
 
 async function fetchHealthStatus(): Promise<HealthPayload> {
-  const results = await Promise.allSettled(
-    HEALTH_URLS.map((url) => fetchWithTimeout(url, 12000))
-  );
-
+  const results = await Promise.allSettled(HEALTH_URLS.map((url) => fetchWithTimeout(url, 12000)));
   const okRes = results.find((r) => r.status === "fulfilled" && r.value.ok);
 
   if (!okRes || okRes.status !== "fulfilled") {
@@ -137,13 +133,11 @@ function dedupeServices(list: HealthService[]) {
 
   for (const s of list) {
     if (!s?.name) continue;
-
     const prev = map.get(s.name);
     if (!prev) {
       map.set(s.name, s);
       continue;
     }
-
     const a = prev.last_run_at ? new Date(prev.last_run_at).getTime() : 0;
     const b = s.last_run_at ? new Date(s.last_run_at).getTime() : 0;
     map.set(s.name, b >= a ? s : prev);
@@ -173,13 +167,13 @@ function dedupeLogs(list: HealthLog[]) {
 }
 
 export function Health() {
+  const navigate = useNavigate();
   const [loading, setLoading] = React.useState(true);
   const [payload, setPayload] = React.useState<HealthPayload | null>(null);
   const [err, setErr] = React.useState<string | null>(null);
 
   const run = React.useCallback(async () => {
     setLoading(true);
-
     try {
       const data = await fetchHealthStatus();
       setPayload({
@@ -198,14 +192,12 @@ export function Health() {
 
   React.useEffect(() => {
     let mounted = true;
-
     const tick = async () => {
       if (!mounted) return;
       await run();
     };
 
     tick();
-
     const t = setInterval(() => {
       tick().catch(() => {});
     }, 15000);
@@ -230,17 +222,27 @@ export function Health() {
           </p>
         </div>
 
-        <div
-          className={`flex items-center gap-2 px-4 py-2 rounded-full border ${
-            headlineOk
-              ? "bg-status-success/10 text-status-success border-status-success/20"
-              : "bg-status-warning/10 text-status-warning border-status-warning/20"
-          }`}
-        >
-          {headlineOk ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
-          <span className="text-xs font-bold uppercase tracking-wider">
-            {loading ? "Checking…" : headlineOk ? "All Systems Nominal" : "Attention Needed"}
-          </span>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => run()}>
+            <RefreshCcw className="h-4 w-4" />
+            Refresh
+          </Button>
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => navigate("/settings")}>
+            <Settings className="h-4 w-4" />
+            Settings
+          </Button>
+          <div
+            className={`flex items-center gap-2 px-4 py-2 rounded-full border ${
+              headlineOk
+                ? "bg-status-success/10 text-status-success border-status-success/20"
+                : "bg-status-warning/10 text-status-warning border-status-warning/20"
+            }`}
+          >
+            {headlineOk ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+            <span className="text-xs font-bold uppercase tracking-wider">
+              {loading ? "Checking..." : headlineOk ? "All Systems Nominal" : "Attention Needed"}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -266,7 +268,6 @@ export function Health() {
                   <div className="h-10 w-10 rounded-lg bg-background flex items-center justify-center border">
                     <Icon className="h-5 w-5 text-primary" />
                   </div>
-
                   <Badge variant={statusBadgeVariant(service.status)} className="text-[9px] font-bold uppercase">
                     {statusLabel(service.status)}
                   </Badge>
@@ -275,21 +276,19 @@ export function Health() {
                 <div>
                   <div className="text-sm font-bold">{service.name}</div>
                   <div className="text-[10px] text-muted-foreground uppercase tracking-widest font-medium">
-                    Last run: {service.minutes_since == null ? "—" : `${service.minutes_since}m ago`}
+                    Last run: {service.minutes_since == null ? "-" : `${service.minutes_since}m ago`}
                   </div>
                 </div>
 
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between text-[10px] font-bold">
                     <span className="opacity-60 uppercase">Freshness</span>
-                    <span>{service.minutes_since == null ? "—" : `${Math.round(freshness)}%`}</span>
+                    <span>{service.minutes_since == null ? "-" : `${Math.round(freshness)}%`}</span>
                   </div>
                   <Progress value={freshness} className="h-1" />
                 </div>
 
-                {service.error ? (
-                  <div className="text-[10px] text-status-warning leading-snug">{service.error}</div>
-                ) : null}
+                {service.error ? <div className="text-[10px] text-status-warning leading-snug">{service.error}</div> : null}
               </CardContent>
             </Card>
           );
@@ -310,7 +309,7 @@ export function Health() {
                   className="flex items-start gap-4 py-3 border-b border-border/50 last:border-0"
                 >
                   <span className="text-muted-foreground/60 w-44 flex-shrink-0">
-                    {log.time ? new Date(log.time).toLocaleString() : "—"}
+                    {log.time ? new Date(log.time).toLocaleString() : "-"}
                   </span>
                   <div className="flex-1 flex items-center gap-2">
                     {log.status === "success" ? (
@@ -372,11 +371,12 @@ export function Health() {
                 <span className="font-bold">Security & Compliance</span>
               </div>
               <p className="text-xs opacity-70 mb-4">
-                All lead data is encrypted at rest and in transit. Nexus Q adheres to SOC2 and GDPR principles for home service operations.
+                All lead data is encrypted at rest and in transit. Nexus Q adheres to SOC2 and GDPR principles for home
+                service operations.
               </p>
               <div className="flex items-center justify-between text-[10px] font-bold border-t border-white/10 pt-4">
                 <span className="opacity-60">Last Check</span>
-                <span>{payload?.generated_at ? new Date(payload.generated_at).toLocaleString() : "—"}</span>
+                <span>{payload?.generated_at ? new Date(payload.generated_at).toLocaleString() : "-"}</span>
               </div>
             </CardContent>
           </Card>

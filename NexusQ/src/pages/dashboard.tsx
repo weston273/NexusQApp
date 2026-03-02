@@ -3,7 +3,7 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useLeads } from "@/hooks/useLeads";
 
-import { Users, MessageSquare, TrendingUp, Clock, ArrowRight } from "lucide-react";
+import { Users, MessageSquare, TrendingUp, Clock, ArrowRight, Settings } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -521,6 +521,10 @@ export function Dashboard() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => navigate("/settings")} className="gap-2">
+            <Settings className="h-3 w-3" />
+            Settings
+          </Button>
           <Button variant="outline" size="sm" onClick={() => navigate("/intake")} className="gap-2">
             Add Lead <ArrowRight className="h-3 w-3" />
           </Button>
