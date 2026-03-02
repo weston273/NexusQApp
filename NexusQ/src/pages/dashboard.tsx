@@ -3,7 +3,7 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useLeads } from "@/hooks/useLeads";
 
-import { Users, MessageSquare, TrendingUp, Clock, ArrowRight, Settings } from "lucide-react";
+import { Users, MessageSquare, TrendingUp, Clock, ArrowRight, Settings, Sparkles } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -89,6 +89,110 @@ function toStageId(s?: string | null) {
 // helper: safe display name
 function isTruthyString(v: unknown) {
   return typeof v === "string" && v.trim().length > 0 && v.trim().toLowerCase() !== "unknown";
+}
+
+type IntelligencePlan = {
+  headline: string;
+  suggestion: string;
+  actionLabel: string;
+  actionPath: string;
+  priority: "high" | "medium" | "low";
+  confidence: number;
+  signals: string[];
+};
+
+function buildSystemIntelligence(args: {
+  leads: any[];
+  pipelineRows: any[];
+  events: any[];
+  conversion: number;
+  avgResponseToday: number | null;
+  newPipelineCount: number;
+}): IntelligencePlan {
+  const { leads, pipelineRows, events, conversion, avgResponseToday, newPipelineCount } = args;
+  const now = Date.now();
+  const inHours = (iso?: string | null) => {
+    if (!iso) return null;
+    const ts = new Date(iso).getTime();
+    if (!Number.isFinite(ts)) return null;
+    return (now - ts) / 3600000;
+  };
+
+  const quotedAging = leads.filter((l) => normStatus(l.status) === "quoted" && (inHours(l.created_at) ?? 0) > 72).length;
+  const bookedLast7d = leads.filter((l) => normStatus(l.status) === "booked" && (inHours(l.created_at) ?? 0) <= 24 * 7).length;
+  const leads24h = leads.filter((l) => (inHours(l.created_at) ?? 0) <= 24).length;
+  const leadsPrev24h = leads.filter((l) => {
+    const h = inHours(l.created_at) ?? 0;
+    return h > 24 && h <= 48;
+  }).length;
+  const eventsLast6h = events.filter((e) => (inHours(e.created_at) ?? 0) <= 6).length;
+
+  if (newPipelineCount >= 10) {
+    const signals = [
+      `${newPipelineCount} leads waiting in New stage`,
+      `${leads24h} leads arrived in last 24h`,
+      `${eventsLast6h} recent system events`,
+    ];
+    return {
+      headline: "High inbound volume detected",
+      suggestion: "Run a structured triage pass now to prevent qualification delays and dropped intent.",
+      actionLabel: "Triage Pipeline",
+      actionPath: "/pipeline",
+      priority: "high",
+      confidence: 88,
+      signals,
+    };
+  }
+
+  if (quotedAging >= 3) {
+    const signals = [
+      `${quotedAging} quoted leads older than 72 hours`,
+      `${bookedLast7d} bookings closed in last 7 days`,
+      "Follow-up momentum is the best conversion lever",
+    ];
+    return {
+      headline: "Quote follow-ups are at risk",
+      suggestion: "Prioritize stale quoted leads first and schedule same-day callbacks for top-value opportunities.",
+      actionLabel: "Review Quoted Leads",
+      actionPath: "/pipeline",
+      priority: "high",
+      confidence: 84,
+      signals,
+    };
+  }
+
+  if ((avgResponseToday ?? 0) > 45 || conversion < 18) {
+    const signals = [
+      `Avg response: ${fmtMin(avgResponseToday)}`,
+      `Conversion: ${conversion}%`,
+      `Lead delta 24h: ${leads24h - leadsPrev24h >= 0 ? "+" : ""}${leads24h - leadsPrev24h}`,
+    ];
+    return {
+      headline: "Conversion performance can be optimized",
+      suggestion: "Tighten first-response SLAs and automate early-stage follow-ups for high-intent services.",
+      actionLabel: "Tune Operations",
+      actionPath: "/health",
+      priority: "medium",
+      confidence: 76,
+      signals,
+    };
+  }
+
+  const stageRows = pipelineRows.length || leads.length;
+  const signals = [
+    `${bookedLast7d} recent bookings`,
+    `${stageRows} active pipeline records`,
+    `${eventsLast6h} live activity events in last 6h`,
+  ];
+  return {
+    headline: "Pipeline is operating within baseline",
+    suggestion: "Maintain cadence: keep lead intake quality high and review the board twice daily.",
+    actionLabel: "Open Dashboard",
+    actionPath: "/",
+    priority: "low",
+    confidence: 68,
+    signals,
+  };
 }
 
 // -------------------------
@@ -500,6 +604,19 @@ export function Dashboard() {
     return rows.filter((r: any) => toStageId(r.stage) === "new").length;
   }, [pipelineRows, leads]);
 
+  const intelligence = React.useMemo(
+    () =>
+      buildSystemIntelligence({
+        leads: leads as any[],
+        pipelineRows: pipelineRows as any[],
+        events: events as any[],
+        conversion,
+        avgResponseToday,
+        newPipelineCount,
+      }),
+    [avgResponseToday, conversion, events, leads, newPipelineCount, pipelineRows]
+  );
+
   if (loading) return <div className="p-6 text-sm text-muted-foreground">Loading…</div>;
   if (error)
     return (
@@ -667,23 +784,56 @@ export function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border-none bg-primary text-primary-foreground">
+        <Card className="border-none bg-primary text-primary-foreground h-full">
           <CardHeader>
-            <CardTitle className="text-lg">System Intelligence</CardTitle>
-            <CardDescription className="text-primary-foreground/60">Nexus Q active automation insights.</CardDescription>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Sparkles className="h-4 w-4" />
+              System Intelligence
+            </CardTitle>
+            <CardDescription className="text-primary-foreground/60">
+              Adaptive recommendations based on live pipeline behavior.
+            </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 flex flex-col h-full">
             <div className="rounded-lg bg-background/10 p-4 border border-white/10">
-              <div className="text-xs font-bold uppercase tracking-wider mb-2">Next Suggested Action</div>
-              <p className="text-sm">{newPipelineCount} new leads awaiting follow-up.</p>
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="text-xs font-bold uppercase tracking-wider">Next Suggested Action</div>
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "text-[10px] uppercase border-white/20",
+                    intelligence.priority === "high"
+                      ? "bg-status-error/20 text-white"
+                      : intelligence.priority === "medium"
+                      ? "bg-status-warning/20 text-white"
+                      : "bg-status-success/20 text-white"
+                  )}
+                >
+                  {intelligence.priority}
+                </Badge>
+              </div>
+              <p className="text-sm font-semibold">{intelligence.headline}</p>
+              <p className="text-xs text-primary-foreground/80 mt-2">{intelligence.suggestion}</p>
+              <div className="mt-3 space-y-1.5">
+                {intelligence.signals.map((signal) => (
+                  <div key={signal} className="text-[11px] flex items-center gap-2 text-primary-foreground/80">
+                    <span className="h-1.5 w-1.5 rounded-full bg-white/80" />
+                    <span>{signal}</span>
+                  </div>
+                ))}
+              </div>
               <Button
                 className="w-full mt-4 bg-white text-black hover:bg-white/90 text-xs font-bold"
-                onClick={() => navigate("/pipeline")}
+                onClick={() => navigate(intelligence.actionPath)}
               >
-                Review Pipeline
+                {intelligence.actionLabel}
               </Button>
             </div>
 
+            <div className="flex items-center justify-between text-xs px-2 mt-auto">
+              <span className="opacity-60">Model Confidence</span>
+              <span className="font-semibold">{intelligence.confidence}%</span>
+            </div>
             <div className="flex items-center justify-between text-xs px-2">
               <span className="opacity-60">Realtime Status</span>
               <div className="flex items-center gap-1.5">

@@ -53,7 +53,7 @@ export function Sidebar({
       <Button
         variant="ghost"
         size="icon"
-        className="fixed top-4 left-4 z-50 lg:hidden"
+        className="fixed top-4 left-4 z-[90] lg:hidden"
         onClick={() => setIsOpen(!isOpen)}
       >
         {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -61,7 +61,7 @@ export function Sidebar({
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 w-64 border-r bg-sidebar-background transition-transform duration-300 lg:static lg:translate-x-0",
+          "fixed inset-y-0 left-0 z-[80] w-64 border-r bg-sidebar-background transition-transform duration-300 lg:static lg:translate-x-0",
           !isOpen && "-translate-x-full"
         )}
       >
@@ -80,6 +80,7 @@ export function Sidebar({
             <NavLink
               key={item.path}
               to={item.path}
+              onClick={() => setIsOpen(false)}
               className={({ isActive }) =>
                 cn(
                   "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
@@ -99,6 +100,7 @@ export function Sidebar({
         <div className="mt-auto border-t p-4 space-y-3">
           <NavLink
             to="/settings"
+            onClick={() => setIsOpen(false)}
             className={({ isActive }) =>
               cn(
                 "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
@@ -149,7 +151,7 @@ export function Sidebar({
       {/* Mobile Overlay */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-30 bg-background/80 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-[70] bg-background/80 backdrop-blur-sm lg:hidden"
           onClick={() => setIsOpen(false)}
         />
       )}

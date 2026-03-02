@@ -2,6 +2,19 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useLeads } from "@/hooks/useLeads";
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverEvent,
+  DragOverlay,
+  DragStartEvent,
+  PointerSensor,
+  TouchSensor,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
 
 import {
   BarChart as ReBarChart,
@@ -14,7 +27,7 @@ import {
   Cell,
 } from "recharts";
 
-import { MoreVertical, Plus, Zap, Filter, Settings, ChevronLeft, ChevronRight } from "lucide-react";
+import { MoreVertical, Plus, Zap, Filter, Settings, ChevronLeft, ChevronRight, GripVertical } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -48,6 +61,127 @@ const stages = [
 
 type StageId = (typeof stages)[number]["id"];
 const stageOrder: StageId[] = ["new", "qualifying", "quoted", "booked"];
+
+type UiLead = {
+  id: string;
+  name: string;
+  company: string;
+  valueNum: number;
+  value: string;
+  time: string;
+  stage: StageId;
+  probability: number | null;
+};
+
+function isStageId(value: string): value is StageId {
+  return stageOrder.includes(value as StageId);
+}
+
+function DraggableLeadCard({
+  lead,
+  onOpenEdit,
+  onMovePrev,
+  onMoveNext,
+}: {
+  lead: UiLead;
+  onOpenEdit: (lead: UiLead) => void;
+  onMovePrev: (lead: UiLead) => void;
+  onMoveNext: (lead: UiLead) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `lead-${lead.id}`,
+    data: { leadId: lead.id, fromStage: lead.stage },
+  });
+
+  const style = transform
+    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
+    : undefined;
+
+  return (
+    <Card
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        "border-none shadow-sm hover:shadow-md transition-shadow group cursor-pointer bg-muted/10",
+        isDragging && "opacity-60"
+      )}
+      onClick={() => onOpenEdit(lead)}
+      title="Drag by handle or click to update stage/value"
+    >
+      <CardContent className="p-4 space-y-3">
+        <div className="flex items-start justify-between">
+          <div>
+            <div className="text-sm font-bold leading-none mb-1">{lead.name}</div>
+            <div className="text-[10px] text-muted-foreground font-medium">{lead.company}</div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              className="inline-flex items-center justify-center rounded-md h-6 w-6 text-muted-foreground hover:bg-background/80"
+              aria-label="Drag card"
+              onClick={(e) => e.stopPropagation()}
+              {...attributes}
+              {...listeners}
+            >
+              <GripVertical className="h-3.5 w-3.5" />
+            </button>
+            <Badge variant="outline" className="text-[10px] font-bold h-5 bg-background border-border/50">
+              {lead.value}
+            </Badge>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between pt-2 border-t border-border/10">
+          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-medium uppercase tracking-tighter">
+            <Zap className="h-3 w-3 text-amber-500" />
+            High Intent
+          </div>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={(e) => {
+                e.stopPropagation();
+                onMovePrev(lead);
+              }}
+              aria-label="Move to previous stage"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={(e) => {
+                e.stopPropagation();
+                onMoveNext(lead);
+              }}
+              aria-label="Move to next stage"
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
+            <div className="text-[10px] text-muted-foreground">{lead.time}</div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function DroppableColumn({ stageId, children }: { stageId: StageId; children: React.ReactNode }) {
+  const { isOver, setNodeRef } = useDroppable({ id: stageId });
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "space-y-3 rounded-xl p-1 transition-colors duration-150",
+        isOver && "bg-primary/10 ring-1 ring-primary/30"
+      )}
+    >
+      {children}
+    </div>
+  );
+}
 
 // ---------- charts ----------
 const StageDistributionChart = ({ data }: { data: { stage: string; count: number }[] }) => (
@@ -237,6 +371,10 @@ async function callWorkflowD(args: { lead_id: string; status: StageId; value?: n
 export function Pipeline() {
   const navigate = useNavigate();
   const { leads, pipelineRows, loading, error, lastLoadedAt, reload } = useLeads();
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 140, tolerance: 6 } })
+  );
 
   // --- Modal state ---
   const [open, setOpen] = React.useState(false);
@@ -252,6 +390,8 @@ export function Pipeline() {
   const [editStage, setEditStage] = React.useState<StageId>("new");
   const [editValue, setEditValue] = React.useState<string>("0");
   const [stageOverrides, setStageOverrides] = React.useState<Record<string, StageId>>({});
+  const [activeDragLeadId, setActiveDragLeadId] = React.useState<string | null>(null);
+  const dragOriginRef = React.useRef<Record<string, StageId>>({});
 
   // Map pipeline info by lead_id (dedupe by latest updated_at)
   const pipelineByLeadId = React.useMemo(() => {
@@ -271,7 +411,7 @@ export function Pipeline() {
   }, [pipelineRows]);
 
   // UI leads: stage from pipeline first, fallback to leads.status
-  const uiLeads = React.useMemo(() => {
+  const uiLeads = React.useMemo<UiLead[]>(() => {
     return (leads ?? []).map((l: any) => {
       const pipe: any = pipelineByLeadId.get(l.id);
       const stage = stageOverrides[l.id] ?? toStageId(pipe?.stage ?? l.status);
@@ -295,6 +435,12 @@ export function Pipeline() {
       };
     });
   }, [leads, pipelineByLeadId, stageOverrides]);
+
+  const leadById = React.useMemo(() => {
+    const map = new Map<string, UiLead>();
+    for (const lead of uiLeads) map.set(lead.id, lead);
+    return map;
+  }, [uiLeads]);
 
   const stageCounts = React.useMemo(() => {
     return {
@@ -335,7 +481,7 @@ export function Pipeline() {
     { stage: "Booked", value: stageCounts.booked },
   ];
 
-  const openEdit = (lead: (typeof uiLeads)[number]) => {
+  const openEdit = (lead: UiLead) => {
     setActiveLead({ id: lead.id, name: lead.name, stage: lead.stage, valueNum: lead.valueNum });
     setEditStage(lead.stage);
     setEditValue(String(Math.round(lead.valueNum || 0)));
@@ -368,7 +514,7 @@ export function Pipeline() {
     }
   };
 
-  const moveLeadStage = async (lead: (typeof uiLeads)[number], direction: "prev" | "next") => {
+  const moveLeadStage = async (lead: UiLead, direction: "prev" | "next") => {
     const idx = stageOrder.indexOf(lead.stage);
     const nextIdx = direction === "next" ? idx + 1 : idx - 1;
     if (nextIdx < 0 || nextIdx >= stageOrder.length) return;
@@ -388,6 +534,11 @@ export function Pipeline() {
               await callWorkflowD({ lead_id: lead.id, status: previous, value: lead.valueNum });
               toast.success("Stage reverted");
               await reload({ silent: true });
+              setStageOverrides((prev) => {
+                const nextState = { ...prev };
+                delete nextState[lead.id];
+                return nextState;
+              });
             } catch (error: any) {
               toast.error(error?.message || "Failed to undo move");
             }
@@ -395,10 +546,108 @@ export function Pipeline() {
         },
       });
       await reload({ silent: true });
+      setStageOverrides((prev) => {
+        const nextState = { ...prev };
+        delete nextState[lead.id];
+        return nextState;
+      });
     } catch (error: any) {
       setStageOverrides((prev) => ({ ...prev, [lead.id]: previous }));
       toast.error(error?.message || "Failed to move stage");
     }
+  };
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const leadId = event.active.data.current?.leadId as string | undefined;
+    const fromStage = event.active.data.current?.fromStage as StageId | undefined;
+    if (!leadId || !fromStage) return;
+    setActiveDragLeadId(leadId);
+    dragOriginRef.current[leadId] = fromStage;
+  };
+
+  const handleDragOver = (event: DragOverEvent) => {
+    const leadId = event.active?.data?.current?.leadId as string | undefined;
+    const overId = event.over?.id ? String(event.over.id) : "";
+    if (!leadId || !overId || !isStageId(overId)) return;
+    setStageOverrides((prev) => {
+      if (prev[leadId] === overId) return prev;
+      return { ...prev, [leadId]: overId };
+    });
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const leadId = event.active.data.current?.leadId as string | undefined;
+    const overId = event.over?.id ? String(event.over.id) : "";
+    setActiveDragLeadId(null);
+
+    if (!leadId) return;
+
+    const originalStage = dragOriginRef.current[leadId] ?? leadById.get(leadId)?.stage;
+    const targetStage =
+      overId && isStageId(overId) ? (overId as StageId) : originalStage;
+    const lead = leadById.get(leadId);
+
+    if (!lead || !originalStage || !targetStage) return;
+
+    if (targetStage === originalStage) {
+      setStageOverrides((prev) => {
+        const nextState = { ...prev };
+        delete nextState[leadId];
+        return nextState;
+      });
+      delete dragOriginRef.current[leadId];
+      return;
+    }
+
+    setStageOverrides((prev) => ({ ...prev, [lead.id]: targetStage }));
+    try {
+      await callWorkflowD({ lead_id: lead.id, status: targetStage, value: lead.valueNum });
+      toast.success(`Moved ${lead.name} to ${targetStage}`, {
+        action: {
+          label: "Undo",
+          onClick: async () => {
+            setStageOverrides((prev) => ({ ...prev, [lead.id]: originalStage }));
+            try {
+              await callWorkflowD({ lead_id: lead.id, status: originalStage, value: lead.valueNum });
+              toast.success("Stage reverted");
+              await reload({ silent: true });
+              setStageOverrides((prev) => {
+                const nextState = { ...prev };
+                delete nextState[lead.id];
+                return nextState;
+              });
+            } catch (error: any) {
+              toast.error(error?.message || "Failed to undo move");
+            }
+          },
+        },
+      });
+      await reload({ silent: true });
+      setStageOverrides((prev) => {
+        const nextState = { ...prev };
+        delete nextState[lead.id];
+        return nextState;
+      });
+    } catch (error: any) {
+      setStageOverrides((prev) => ({ ...prev, [lead.id]: originalStage }));
+      toast.error(error?.message || "Failed to move stage");
+    } finally {
+      delete dragOriginRef.current[leadId];
+    }
+  };
+
+  const handleDragCancel = () => {
+    if (!activeDragLeadId) return;
+    const originalStage = dragOriginRef.current[activeDragLeadId];
+    if (originalStage) {
+      setStageOverrides((prev) => {
+        const nextState = { ...prev };
+        delete nextState[activeDragLeadId];
+        return nextState;
+      });
+      delete dragOriginRef.current[activeDragLeadId];
+    }
+    setActiveDragLeadId(null);
   };
 
   if (loading) {
@@ -457,109 +706,86 @@ export function Pipeline() {
           <PipelineFlowChart data={pipelineFlowData} />
         </div>
 
-        <ScrollArea className="w-full whitespace-nowrap rounded-md border-none">
-          <div className="flex w-max space-x-6 min-h-[600px]">
-            {stages.map((stage) => (
-              <div key={stage.id} className="w-[85vw] sm:w-[300px] flex flex-col space-y-4">
-                <div className="flex items-center justify-between px-2">
-                  <div className="flex items-center gap-2">
-                    <div className={cn("h-2 w-2 rounded-full", stage.color)} />
-                    <h3 className="font-bold text-sm uppercase tracking-wider">{stage.title}</h3>
-                    <Badge
-                      variant="secondary"
-                      className="ml-1 text-[10px] h-4 px-1.5 bg-muted/50 text-muted-foreground"
-                    >
-                      {uiLeads.filter((l) => l.stage === stage.id).length}
-                    </Badge>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => toast.info(`${stage.title} actions are available in the lead cards below.`)}
-                  >
-                    <MoreVertical className="h-4 w-4 text-muted-foreground" />
-                  </Button>
-                </div>
-
-                <div className="space-y-3">
-                  {uiLeads
-                    .filter((l) => l.stage === stage.id)
-                    .map((lead) => (
-                      <Card
-                        key={lead.id}
-                        className="border-none shadow-sm hover:shadow-md transition-shadow group cursor-pointer bg-muted/10"
-                        onClick={() => openEdit(lead)}
-                        title="Click to update stage/value"
+        <DndContext
+          sensors={sensors}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDragEnd={handleDragEnd}
+          onDragCancel={handleDragCancel}
+        >
+          <ScrollArea className="w-full whitespace-nowrap rounded-md border-none">
+            <div className="flex w-max space-x-6 min-h-[600px]">
+              {stages.map((stage) => (
+                <div key={stage.id} className="w-[85vw] sm:w-[300px] flex flex-col space-y-4">
+                  <div className="flex items-center justify-between px-2">
+                    <div className="flex items-center gap-2">
+                      <div className={cn("h-2 w-2 rounded-full", stage.color)} />
+                      <h3 className="font-bold text-sm uppercase tracking-wider">{stage.title}</h3>
+                      <Badge
+                        variant="secondary"
+                        className="ml-1 text-[10px] h-4 px-1.5 bg-muted/50 text-muted-foreground"
                       >
-                        <CardContent className="p-4 space-y-3">
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <div className="text-sm font-bold leading-none mb-1">{lead.name}</div>
-                              <div className="text-[10px] text-muted-foreground font-medium">{lead.company}</div>
-                            </div>
-                            <Badge variant="outline" className="text-[10px] font-bold h-5 bg-background border-border/50">
-                              {lead.value}
-                            </Badge>
-                          </div>
-
-                          <div className="flex items-center justify-between pt-2 border-t border-border/10">
-                            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-medium uppercase tracking-tighter">
-                              <Zap className="h-3 w-3 text-amber-500" />
-                              High Intent
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  moveLeadStage(lead, "prev");
-                                }}
-                                aria-label="Move to previous stage"
-                              >
-                                <ChevronLeft className="h-3.5 w-3.5" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  moveLeadStage(lead, "next");
-                                }}
-                                aria-label="Move to next stage"
-                              >
-                                <ChevronRight className="h-3.5 w-3.5" />
-                              </Button>
-                              <div className="text-[10px] text-muted-foreground">{lead.time}</div>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-
-                  {!uiLeads.filter((l) => l.stage === stage.id).length && (
-                    <div className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
-                      No leads in {stage.title} yet.
+                        {uiLeads.filter((l) => l.stage === stage.id).length}
+                      </Badge>
                     </div>
-                  )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => toast.info(`${stage.title} actions are available in the lead cards below.`)}
+                    >
+                      <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                    </Button>
+                  </div>
 
-                  <Button
-                    variant="ghost"
-                    className="w-full border-2 border-dashed border-border/20 h-12 text-muted-foreground text-xs hover:border-border/50 hover:bg-muted/5"
-                    onClick={() => navigate("/intake")}
-                  >
-                    <Plus className="h-3 w-3 mr-2" />
-                    Add Lead
-                  </Button>
+                  <DroppableColumn stageId={stage.id}>
+                    {uiLeads
+                      .filter((l) => l.stage === stage.id)
+                      .map((lead) => (
+                        <DraggableLeadCard
+                          key={lead.id}
+                          lead={lead}
+                          onOpenEdit={openEdit}
+                          onMovePrev={(l) => moveLeadStage(l, "prev")}
+                          onMoveNext={(l) => moveLeadStage(l, "next")}
+                        />
+                      ))}
+
+                    {!uiLeads.filter((l) => l.stage === stage.id).length && (
+                      <div className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
+                        No leads in {stage.title} yet.
+                      </div>
+                    )}
+
+                    <Button
+                      variant="ghost"
+                      className="w-full border-2 border-dashed border-border/20 h-12 text-muted-foreground text-xs hover:border-border/50 hover:bg-muted/5"
+                      onClick={() => navigate("/intake")}
+                    >
+                      <Plus className="h-3 w-3 mr-2" />
+                      Add Lead
+                    </Button>
+                  </DroppableColumn>
                 </div>
-              </div>
-            ))}
-          </div>
-          <ScrollBar orientation="horizontal" />
-        </ScrollArea>
+              ))}
+            </div>
+            <ScrollBar orientation="horizontal" />
+          </ScrollArea>
+
+          <DragOverlay>
+            {activeDragLeadId && leadById.get(activeDragLeadId) ? (
+              <Card className="w-[260px] border-none shadow-xl bg-card/95">
+                <CardContent className="p-4 space-y-2">
+                  <div className="text-sm font-bold">{leadById.get(activeDragLeadId)?.name}</div>
+                  <div className="text-[10px] text-muted-foreground">{leadById.get(activeDragLeadId)?.company}</div>
+                  <Badge variant="outline" className="text-[10px]">
+                    {leadById.get(activeDragLeadId)?.value}
+                  </Badge>
+                </CardContent>
+              </Card>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
       </div>
 
       {/* -------- Edit Modal -------- */}
