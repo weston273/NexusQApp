@@ -1,7 +1,7 @@
-// src/hooks/useLeads.ts
 import * as React from "react";
 import { supabase } from "@/lib/supabase";
 import { triggerProgress } from "@/lib/progressBus";
+import { loadAppSettings, SETTINGS_CHANGED_EVENT } from "@/lib/userSettings";
 
 export type Lead = {
   id: string;
@@ -22,7 +22,7 @@ export type Lead = {
 export type LeadEvent = {
   id: string;
   client_id: string | null;
-  lead_id: string | null; // ✅ schema says nullable
+  lead_id: string | null;
   event_type: string;
   payload_json: any;
   created_at: string;
@@ -38,21 +38,122 @@ export type PipelineRow = {
   updated_at: string | null;
 };
 
-export function useLeads() {
-  const [leads, setLeads] = React.useState<Lead[]>([]);
-  const [events, setEvents] = React.useState<LeadEvent[]>([]);
-  const [pipelineRows, setPipelineRows] = React.useState<PipelineRow[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+type LeadsSnapshot = {
+  leads: Lead[];
+  events: LeadEvent[];
+  pipelineRows: PipelineRow[];
+  loading: boolean;
+  error: string | null;
+  lastLoadedAt: Date | null;
+};
 
-  const load = React.useCallback(async (opts?: { silent?: boolean }) => {
-    const silent = opts?.silent ?? false;
+const initialSnapshot: LeadsSnapshot = {
+  leads: [],
+  events: [],
+  pipelineRows: [],
+  loading: true,
+  error: null,
+  lastLoadedAt: null,
+};
 
-    if (!silent) {
-      setLoading(true);
-      triggerProgress(650);
+class LeadsStore {
+  private snapshot: LeadsSnapshot = initialSnapshot;
+  private listeners = new Set<() => void>();
+  private started = false;
+  private channel: ReturnType<typeof supabase.channel> | null = null;
+  private refreshTimer: ReturnType<typeof setInterval> | null = null;
+  private settingsListenerBound = false;
+
+  getSnapshot = () => this.snapshot;
+
+  subscribe = (listener: () => void) => {
+    this.listeners.add(listener);
+    if (!this.started) this.start();
+    return () => {
+      this.listeners.delete(listener);
+      if (!this.listeners.size) this.stop();
+    };
+  };
+
+  private emit() {
+    this.listeners.forEach((listener) => listener());
+  }
+
+  private setSnapshot(partial: Partial<LeadsSnapshot>) {
+    this.snapshot = { ...this.snapshot, ...partial };
+    this.emit();
+  }
+
+  private applyAutoRefresh() {
+    if (this.refreshTimer) {
+      clearInterval(this.refreshTimer);
+      this.refreshTimer = null;
     }
-    setError(null);
+
+    const settings = loadAppSettings();
+    if (!settings.autoRefresh) return;
+
+    const everyMs = Math.max(5000, settings.refreshIntervalSec * 1000);
+    this.refreshTimer = setInterval(() => {
+      this.load({ silent: true }).catch(() => {});
+    }, everyMs);
+  }
+
+  private start() {
+    this.started = true;
+
+    this.load().catch(() => {});
+    this.channel = supabase
+      .channel("rt-leads-events-pipeline")
+      .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, () => {
+        triggerProgress(450);
+        this.load({ silent: true }).catch(() => {});
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "lead_events" }, () => {
+        triggerProgress(450);
+        this.load({ silent: true }).catch(() => {});
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "pipeline" }, () => {
+        triggerProgress(450);
+        this.load({ silent: true }).catch(() => {});
+      })
+      .subscribe();
+
+    this.applyAutoRefresh();
+    if (!this.settingsListenerBound && typeof window !== "undefined") {
+      window.addEventListener(SETTINGS_CHANGED_EVENT, this.handleSettingsChange as EventListener);
+      this.settingsListenerBound = true;
+    }
+  }
+
+  private stop() {
+    this.started = false;
+    if (this.channel) {
+      supabase.removeChannel(this.channel);
+      this.channel = null;
+    }
+    if (this.refreshTimer) {
+      clearInterval(this.refreshTimer);
+      this.refreshTimer = null;
+    }
+    if (this.settingsListenerBound && typeof window !== "undefined") {
+      window.removeEventListener(SETTINGS_CHANGED_EVENT, this.handleSettingsChange as EventListener);
+      this.settingsListenerBound = false;
+    }
+  }
+
+  private handleSettingsChange = () => {
+    this.applyAutoRefresh();
+  };
+
+  load = async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent ?? false;
+    if (!silent) {
+      this.setSnapshot({ loading: true, error: null });
+      triggerProgress(650);
+    } else {
+      this.setSnapshot({ error: null });
+    }
 
     const [
       { data: leadData, error: leadErr },
@@ -68,40 +169,23 @@ export function useLeads() {
     ]);
 
     const firstErr = leadErr ?? eventErr ?? pipeErr;
-    if (firstErr) setError(firstErr.message);
+    this.setSnapshot({
+      leads: (leadData ?? []) as any,
+      events: (eventData ?? []) as any,
+      pipelineRows: (pipeData ?? []) as any,
+      error: firstErr ? firstErr.message : null,
+      loading: false,
+      lastLoadedAt: new Date(),
+    });
+  };
+}
 
-    setLeads((leadData ?? []) as any);
-    setEvents((eventData ?? []) as any);
-    setPipelineRows((pipeData ?? []) as any);
+const sharedStore = new LeadsStore();
 
-    if (!silent) setLoading(false);
-  }, []);
-
-  React.useEffect(() => {
-    // initial load
-    load();
-
-    // ✅ ONE channel for all tables
-    const channel = supabase
-      .channel("rt-leads-events-pipeline")
-      .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, () => {
-        triggerProgress(450);
-        load({ silent: true });
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "lead_events" }, () => {
-        triggerProgress(450);
-        load({ silent: true });
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "pipeline" }, () => {
-        triggerProgress(450);
-        load({ silent: true });
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [load]);
-
-  return { leads, events, pipelineRows, loading, error, reload: load };
+export function useLeads() {
+  const snapshot = React.useSyncExternalStore(sharedStore.subscribe, sharedStore.getSnapshot);
+  return {
+    ...snapshot,
+    reload: sharedStore.load,
+  };
 }

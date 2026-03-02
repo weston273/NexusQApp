@@ -14,12 +14,14 @@ import {
   Cell,
 } from "recharts";
 
-import { MoreVertical, Plus, Zap, Filter, Settings } from "lucide-react";
+import { MoreVertical, Plus, Zap, Filter, Settings, ChevronLeft, ChevronRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { PageHeader } from "@/components/ui/page-header";
 
 import {
   Dialog,
@@ -35,6 +37,7 @@ import { Label } from "@/components/ui/label";
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
+import { withRetry } from "@/lib/network";
 
 const stages = [
   { id: "new", title: "New", color: "bg-blue-500" },
@@ -44,10 +47,11 @@ const stages = [
 ] as const;
 
 type StageId = (typeof stages)[number]["id"];
+const stageOrder: StageId[] = ["new", "qualifying", "quoted", "booked"];
 
 // ---------- charts ----------
 const StageDistributionChart = ({ data }: { data: { stage: string; count: number }[] }) => (
-  <Card className="border-none bg-muted/30">
+  <Card className="border-none card-surface-a">
     <CardHeader className="pb-2">
       <CardTitle className="text-sm font-medium">Leads per Stage</CardTitle>
       <CardDescription className="text-xs">Where workload is concentrated.</CardDescription>
@@ -76,7 +80,11 @@ const StageDistributionChart = ({ data }: { data: { stage: string; count: number
             }}
             itemStyle={{ color: "hsl(var(--primary))" }}
           />
-          <Bar dataKey="count" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} barSize={30} />
+          <Bar dataKey="count" radius={[4, 4, 0, 0]} barSize={30}>
+            {data.map((_, idx) => (
+              <Cell key={`stage-cell-${idx}`} fill={`hsl(var(--chart-${(idx % 4) + 1}))`} />
+            ))}
+          </Bar>
         </ReBarChart>
       </ResponsiveContainer>
     </CardContent>
@@ -84,7 +92,7 @@ const StageDistributionChart = ({ data }: { data: { stage: string; count: number
 );
 
 const RevenueStageChart = ({ data }: { data: { stage: string; revenue: number }[] }) => (
-  <Card className="border-none bg-muted/30">
+  <Card className="border-none card-surface-b">
     <CardHeader className="pb-2">
       <CardTitle className="text-sm font-medium">Revenue Distribution</CardTitle>
       <CardDescription className="text-xs">Sum of pipeline.value per stage.</CardDescription>
@@ -114,7 +122,11 @@ const RevenueStageChart = ({ data }: { data: { stage: string; revenue: number }[
             itemStyle={{ color: "hsl(var(--primary))" }}
             formatter={(value) => [`$${value}`, "Revenue"]}
           />
-          <Bar dataKey="revenue" fill="hsl(var(--primary))" radius={[6, 6, 0, 0]} barSize={30} />
+          <Bar dataKey="revenue" radius={[6, 6, 0, 0]} barSize={30}>
+            {data.map((_, idx) => (
+              <Cell key={`revenue-cell-${idx}`} fill={`hsl(var(--chart-${(idx % 4) + 4}))`} />
+            ))}
+          </Bar>
         </ReBarChart>
       </ResponsiveContainer>
     </CardContent>
@@ -122,7 +134,7 @@ const RevenueStageChart = ({ data }: { data: { stage: string; revenue: number }[
 );
 
 const PipelineFlowChart = ({ data }: { data: { stage: string; value: number }[] }) => (
-  <Card className="border-none bg-muted/30">
+  <Card className="border-none card-surface-c">
     <CardHeader className="pb-2">
       <CardTitle className="text-sm font-medium">Pipeline Progression</CardTitle>
       <CardDescription className="text-xs">Leads count across stages.</CardDescription>
@@ -147,7 +159,11 @@ const PipelineFlowChart = ({ data }: { data: { stage: string; value: number }[] 
             }}
             itemStyle={{ color: "hsl(var(--primary))" }}
           />
-          <Bar dataKey="value" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} barSize={20} />
+          <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={20}>
+            {data.map((_, idx) => (
+              <Cell key={`flow-cell-${idx}`} fill={`hsl(var(--chart-${(idx % 5) + 1}))`} />
+            ))}
+          </Bar>
         </ReBarChart>
       </ResponsiveContainer>
     </CardContent>
@@ -197,11 +213,15 @@ async function callWorkflowD(args: { lead_id: string; status: StageId; value?: n
     value: args.value ?? null,
   };
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+  const res = await withRetry(
+    () =>
+      fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }),
+    { retries: 2, baseDelayMs: 350 }
+  );
 
   const data = await res.json().catch(() => ({}));
 
@@ -216,7 +236,7 @@ async function callWorkflowD(args: { lead_id: string; status: StageId; value?: n
 
 export function Pipeline() {
   const navigate = useNavigate();
-  const { leads, pipelineRows, loading, error, reload } = useLeads();
+  const { leads, pipelineRows, loading, error, lastLoadedAt, reload } = useLeads();
 
   // --- Modal state ---
   const [open, setOpen] = React.useState(false);
@@ -231,6 +251,7 @@ export function Pipeline() {
 
   const [editStage, setEditStage] = React.useState<StageId>("new");
   const [editValue, setEditValue] = React.useState<string>("0");
+  const [stageOverrides, setStageOverrides] = React.useState<Record<string, StageId>>({});
 
   // Map pipeline info by lead_id (dedupe by latest updated_at)
   const pipelineByLeadId = React.useMemo(() => {
@@ -253,7 +274,7 @@ export function Pipeline() {
   const uiLeads = React.useMemo(() => {
     return (leads ?? []).map((l: any) => {
       const pipe: any = pipelineByLeadId.get(l.id);
-      const stage = toStageId(pipe?.stage ?? l.status);
+      const stage = stageOverrides[l.id] ?? toStageId(pipe?.stage ?? l.status);
       const value = Number(pipe?.value ?? 0);
 
       const safeName =
@@ -273,7 +294,7 @@ export function Pipeline() {
         probability: pipe?.probability ?? null,
       };
     });
-  }, [leads, pipelineByLeadId]);
+  }, [leads, pipelineByLeadId, stageOverrides]);
 
   const stageCounts = React.useMemo(() => {
     return {
@@ -347,7 +368,54 @@ export function Pipeline() {
     }
   };
 
-  if (loading) return <div className="p-6 text-sm text-muted-foreground">Loading…</div>;
+  const moveLeadStage = async (lead: (typeof uiLeads)[number], direction: "prev" | "next") => {
+    const idx = stageOrder.indexOf(lead.stage);
+    const nextIdx = direction === "next" ? idx + 1 : idx - 1;
+    if (nextIdx < 0 || nextIdx >= stageOrder.length) return;
+
+    const previous = lead.stage;
+    const next = stageOrder[nextIdx];
+
+    setStageOverrides((prev) => ({ ...prev, [lead.id]: next }));
+    try {
+      await callWorkflowD({ lead_id: lead.id, status: next, value: lead.valueNum });
+      toast.success(`Moved to ${next}`, {
+        action: {
+          label: "Undo",
+          onClick: async () => {
+            setStageOverrides((prev) => ({ ...prev, [lead.id]: previous }));
+            try {
+              await callWorkflowD({ lead_id: lead.id, status: previous, value: lead.valueNum });
+              toast.success("Stage reverted");
+              await reload({ silent: true });
+            } catch (error: any) {
+              toast.error(error?.message || "Failed to undo move");
+            }
+          },
+        },
+      });
+      await reload({ silent: true });
+    } catch (error: any) {
+      setStageOverrides((prev) => ({ ...prev, [lead.id]: previous }));
+      toast.error(error?.message || "Failed to move stage");
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-8 w-56" />
+          <Skeleton className="h-9 w-52" />
+        </div>
+        <div className="grid gap-6 md:grid-cols-3">
+          <Skeleton className="h-56 w-full rounded-xl" />
+          <Skeleton className="h-56 w-full rounded-xl" />
+          <Skeleton className="h-56 w-full rounded-xl" />
+        </div>
+      </div>
+    );
+  }
   if (error)
     return (
       <div className="p-6 space-y-3">
@@ -361,27 +429,27 @@ export function Pipeline() {
   return (
     <>
       <div className="space-y-8 pb-8">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Pipeline Operations</h1>
-            <p className="text-muted-foreground mt-1 text-sm">Revenue flow and lead progression across all stages.</p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="h-9 gap-2" onClick={() => navigate("/settings")}>
-              <Settings className="h-4 w-4" />
-              Settings
-            </Button>
-            <Button variant="outline" size="sm" className="h-9 gap-2" onClick={() => reload()}>
-              <Filter className="h-4 w-4" />
-              Refresh
-            </Button>
-            <Button size="sm" className="h-9 gap-2" onClick={() => navigate("/intake")}>
-              <Plus className="h-4 w-4" />
-              Add Lead
-            </Button>
-          </div>
-        </div>
+        <PageHeader
+          title="Pipeline Operations"
+          description="Revenue flow and lead progression across all stages."
+          lastUpdatedLabel={`Last updated: ${lastLoadedAt ? lastLoadedAt.toLocaleTimeString() : "Not yet synced"}`}
+          actions={
+            <>
+              <Button variant="outline" size="sm" className="h-9 gap-2" onClick={() => navigate("/settings")}>
+                <Settings className="h-4 w-4" />
+                Settings
+              </Button>
+              <Button variant="outline" size="sm" className="h-9 gap-2" onClick={() => reload()}>
+                <Filter className="h-4 w-4" />
+                Refresh
+              </Button>
+              <Button size="sm" className="h-9 gap-2" onClick={() => navigate("/intake")}>
+                <Plus className="h-4 w-4" />
+                Add Lead
+              </Button>
+            </>
+          }
+        />
 
         <div className="grid gap-6 md:grid-cols-3">
           <StageDistributionChart data={stageDistributionData} />
@@ -392,7 +460,7 @@ export function Pipeline() {
         <ScrollArea className="w-full whitespace-nowrap rounded-md border-none">
           <div className="flex w-max space-x-6 min-h-[600px]">
             {stages.map((stage) => (
-              <div key={stage.id} className="w-[300px] flex flex-col space-y-4">
+              <div key={stage.id} className="w-[85vw] sm:w-[300px] flex flex-col space-y-4">
                 <div className="flex items-center justify-between px-2">
                   <div className="flex items-center gap-2">
                     <div className={cn("h-2 w-2 rounded-full", stage.color)} />
@@ -440,11 +508,43 @@ export function Pipeline() {
                               <Zap className="h-3 w-3 text-amber-500" />
                               High Intent
                             </div>
-                            <div className="text-[10px] text-muted-foreground">{lead.time}</div>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  moveLeadStage(lead, "prev");
+                                }}
+                                aria-label="Move to previous stage"
+                              >
+                                <ChevronLeft className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  moveLeadStage(lead, "next");
+                                }}
+                                aria-label="Move to next stage"
+                              >
+                                <ChevronRight className="h-3.5 w-3.5" />
+                              </Button>
+                              <div className="text-[10px] text-muted-foreground">{lead.time}</div>
+                            </div>
                           </div>
                         </CardContent>
                       </Card>
                     ))}
+
+                  {!uiLeads.filter((l) => l.stage === stage.id).length && (
+                    <div className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
+                      No leads in {stage.title} yet.
+                    </div>
+                  )}
 
                   <Button
                     variant="ghost"
@@ -528,3 +628,4 @@ export function Pipeline() {
     </>
   );
 }
+

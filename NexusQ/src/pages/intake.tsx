@@ -17,6 +17,8 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
+import { withRetry } from '@/lib/network';
 
 type Step = 'service' | 'details' | 'contact' | 'success';
 
@@ -61,10 +63,14 @@ function makeReferenceId() {
   return `QX-${a}-${b}`;
 }
 
+const INTAKE_DRAFT_KEY = "nexusq.intake.draft";
+
 export function LeadIntake() {
   const [step, setStep] = React.useState<Step>('service');
   const [submitting, setSubmitting] = React.useState(false);
   const [referenceId, setReferenceId] = React.useState<string>('');
+  const [errors, setErrors] = React.useState<Record<string, string>>({});
+  const [recentAddresses, setRecentAddresses] = React.useState<string[]>([]);
 
   // Phone UI state (country + national digits)
   const [countryCode, setCountryCode] = React.useState<string>('ZW');
@@ -78,6 +84,8 @@ export function LeadIntake() {
     service: '',
     urgency: 'standard',
     address: '',
+    propertyType: 'residential',
+    issueDetails: '',
     // preferredDate: '', // optional
     // notes: '', // optional
     name: '',
@@ -91,6 +99,51 @@ export function LeadIntake() {
   const phoneTooLong = phoneLen > selectedCountry.maxLen;
   const phoneTooShort = phoneLen > 0 && phoneLen < selectedCountry.minLen;
   const phoneValid = phoneLen >= selectedCountry.minLen && phoneLen <= selectedCountry.maxLen;
+
+  React.useEffect(() => {
+    try {
+      const raw = localStorage.getItem("nexusq.intake.addresses");
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as string[];
+      if (Array.isArray(parsed)) setRecentAddresses(parsed.slice(0, 8));
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  React.useEffect(() => {
+    try {
+      const raw = localStorage.getItem(INTAKE_DRAFT_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Partial<{
+        step: Step;
+        formData: typeof formData;
+        countryCode: string;
+        phoneNational: string;
+      }>;
+      if (parsed.formData) {
+        setFormData((prev) => ({ ...prev, ...parsed.formData }));
+      }
+      if (parsed.countryCode) setCountryCode(parsed.countryCode);
+      if (parsed.phoneNational) setPhoneNational(parsed.phoneNational);
+      if (parsed.step && parsed.step !== "success") setStep(parsed.step);
+      toast.info("Recovered your intake draft.");
+    } catch {
+      // ignore invalid local draft
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  React.useEffect(() => {
+    if (step === "success") return;
+    const draft = {
+      step,
+      formData,
+      countryCode,
+      phoneNational,
+    };
+    localStorage.setItem(INTAKE_DRAFT_KEY, JSON.stringify(draft));
+  }, [countryCode, formData, phoneNational, step]);
 
   const progress = {
     service: 25,
@@ -110,15 +163,43 @@ export function LeadIntake() {
     if (step === 'contact') setStep('details');
   };
 
+  function validateDetailsStep() {
+    const nextErrors: Record<string, string> = {};
+    if (!formData.address.trim()) nextErrors.address = "Service address is required.";
+    setErrors(nextErrors);
+    return !Object.keys(nextErrors).length;
+  }
+
+  function validateContactStep() {
+    const nextErrors: Record<string, string> = {};
+    if (!formData.name.trim()) nextErrors.name = "Full name is required.";
+    if (!phoneDigits) nextErrors.phone = "Phone number is required.";
+    if (phoneDigits && !phoneValid) nextErrors.phone = "Phone number format is invalid for selected country.";
+    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) nextErrors.email = "Please enter a valid email address.";
+    setErrors(nextErrors);
+    return !Object.keys(nextErrors).length;
+  }
+
   async function submitLead() {
     const ref = makeReferenceId();
 
-    // Basic validations (keep it light + same flow)
-    if (!formData.service) return alert("Please select a service.");
-    if (!formData.address) return alert("Please enter the service address.");
-    if (!formData.name) return alert("Please enter your full name.");
-    if (!phoneDigits) return alert("Please enter your phone number.");
-    if (!phoneValid) return alert("Phone number is invalid. Please check the digits.");
+    if (!formData.service) {
+      toast.error("Please select a service first.");
+      setStep("service");
+      return;
+    }
+
+    if (!validateDetailsStep()) {
+      toast.error("Please complete the service details.");
+      setStep("details");
+      return;
+    }
+
+    if (!validateContactStep()) {
+      toast.error("Please fix the highlighted contact fields.");
+      setStep("contact");
+      return;
+    }
 
     const phoneE164 = buildE164(selectedCountry, phoneDigits);
 
@@ -129,6 +210,8 @@ export function LeadIntake() {
       service: formData.service,
       urgency: formData.urgency,
       address: formData.address,
+      property_type: formData.propertyType,
+      issue_details: formData.issueDetails || null,
       // preferred_date: formData.preferredDate || null,
       // notes: formData.notes || null,
       name: formData.name,
@@ -146,14 +229,18 @@ export function LeadIntake() {
     try {
       const results = await Promise.allSettled(
         urls.map((url) =>
-          fetch(url, {
-            method: "POST",
-            headers: { 
-              "Content-Type": "application/json",
-              // "x-nexusq-secret" : "nexus-q-secret-123",
-            },
-            body: JSON.stringify(payload),
-          })
+          withRetry(
+            () =>
+              fetch(url, {
+                method: "POST",
+                headers: { 
+                  "Content-Type": "application/json",
+                  // "x-nexusq-secret" : "nexus-q-secret-123",
+                },
+                body: JSON.stringify(payload),
+              }),
+            { retries: 2, baseDelayMs: 350 }
+          )
         )
       );
 
@@ -163,16 +250,24 @@ export function LeadIntake() {
 
       if (!atLeastOneOk) {
         console.error("Lead submit failed:", results);
-        alert("Something went wrong. Please try again.");
+        toast.error("Something went wrong. Please try again.");
         return;
       }
 
       setReferenceId(ref);
       setFormData((p) => ({ ...p, phone: phoneE164 })); // keep it consistent
       setStep("success");
+      setErrors({});
+      localStorage.removeItem(INTAKE_DRAFT_KEY);
+      if (formData.address.trim()) {
+        const merged = [formData.address.trim(), ...recentAddresses.filter((addr) => addr !== formData.address.trim())].slice(0, 8);
+        setRecentAddresses(merged);
+        localStorage.setItem("nexusq.intake.addresses", JSON.stringify(merged));
+      }
+      toast.success("Service request sent.");
     } catch (error) {
       console.error("Failed to submit lead", error);
-      alert("Something went wrong. Please try again.");
+      toast.error("Something went wrong. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -260,10 +355,47 @@ export function LeadIntake() {
                     <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
                       id="address"
+                      list="address-suggestions"
                       placeholder="Street address, City, Zip"
                       className="pl-10 h-12"
                       value={formData.address}
-                      onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                      onChange={(e) => {
+                        setFormData({ ...formData, address: e.target.value });
+                        if (errors.address) setErrors((prev) => ({ ...prev, address: '' }));
+                      }}
+                      aria-invalid={!!errors.address}
+                    />
+                  </div>
+                  <datalist id="address-suggestions">
+                    {recentAddresses.map((addr) => (
+                      <option key={addr} value={addr} />
+                    ))}
+                  </datalist>
+                  {errors.address && <p className="text-[11px] text-status-error">{errors.address}</p>}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="propertyType" className="font-bold text-xs uppercase tracking-wider">Property Type</Label>
+                    <select
+                      id="propertyType"
+                      value={formData.propertyType}
+                      onChange={(e) => setFormData({ ...formData, propertyType: e.target.value })}
+                      className="h-12 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      <option value="residential">Residential</option>
+                      <option value="commercial">Commercial</option>
+                      <option value="industrial">Industrial</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="issueDetails" className="font-bold text-xs uppercase tracking-wider">Issue Details</Label>
+                    <Input
+                      id="issueDetails"
+                      placeholder={formData.service ? `Describe the ${formData.service} issue` : "Describe issue"}
+                      className="h-12"
+                      value={formData.issueDetails}
+                      onChange={(e) => setFormData({ ...formData, issueDetails: e.target.value })}
                     />
                   </div>
                 </div>
@@ -303,7 +435,11 @@ export function LeadIntake() {
                 <Button 
                   className="flex-1 font-bold gap-2 h-12" 
                   disabled={!formData.address}
-                  onClick={() => nextStep('details')}
+                  onClick={() => {
+                    if (validateDetailsStep()) {
+                      nextStep('details');
+                    }
+                  }}
                 >
                   Continue <ArrowRight className="h-4 w-4" />
                 </Button>
@@ -326,8 +462,13 @@ export function LeadIntake() {
                     placeholder="Justina Amari"
                     className="h-12"
                     value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, name: e.target.value });
+                      if (errors.name) setErrors((prev) => ({ ...prev, name: '' }));
+                    }}
+                    aria-invalid={!!errors.name}
                   />
+                  {errors.name && <p className="text-[11px] text-status-error">{errors.name}</p>}
                 </div>
 
                 {/* ✅ Country picker + strict-length phone input */}
@@ -372,8 +513,10 @@ export function LeadIntake() {
                         const clipped = digits.slice(0, max);
 
                         setPhoneNational(clipped);
+                        if (errors.phone) setErrors((prev) => ({ ...prev, phone: '' }));
                       }}
                       maxLength={selectedCountry.maxLen + 2} // +2 buffer because user may paste with 0/spaces; we clip anyway
+                      aria-invalid={!!errors.phone || phoneTooShort || phoneTooLong}
                     />
                   </div>
 
@@ -391,6 +534,7 @@ export function LeadIntake() {
                       after {selectedCountry.dial}. (Don’t include the starting 0.)
                     </div>
                   )}
+                  {errors.phone && <p className="text-[11px] text-status-error">{errors.phone}</p>}
                 </div>
 
                 {/* optional email */}
@@ -402,8 +546,13 @@ export function LeadIntake() {
                     placeholder="name@example.com"
                     className="h-12"
                     value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, email: e.target.value });
+                      if (errors.email) setErrors((prev) => ({ ...prev, email: '' }));
+                    }}
+                    aria-invalid={!!errors.email}
                   />
+                  {errors.email && <p className="text-[11px] text-status-error">{errors.email}</p>}
                 </div>
               </div>
 
@@ -462,6 +611,8 @@ export function LeadIntake() {
                     service: '',
                     urgency: 'standard',
                     address: '',
+                    propertyType: 'residential',
+                    issueDetails: '',
                     // preferredDate: '',
                     // notes: '',
                     name: '',
@@ -471,6 +622,8 @@ export function LeadIntake() {
                   setReferenceId('');
                   setCountryCode('ZW');
                   setPhoneNational('');
+                  setErrors({});
+                  localStorage.removeItem(INTAKE_DRAFT_KEY);
                   setStep('service');
                 }}
               >

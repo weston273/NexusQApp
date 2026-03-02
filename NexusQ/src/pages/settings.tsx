@@ -12,6 +12,7 @@ import {
   UserPlus,
   Activity,
   BarChart3,
+  Timer,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -20,65 +21,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-
-type ThemeMode = "light" | "dark";
-
-type AppSettingsState = {
-  operatorName: string;
-  operatorEmail: string;
-  timezone: string;
-  autoRefresh: boolean;
-  pushNotifications: boolean;
-  auditTrail: boolean;
-  theme: ThemeMode;
-};
-
-const SETTINGS_KEY = "nexusq.settings";
-
-const defaultSettings: AppSettingsState = {
-  operatorName: "Operator Alpha",
-  operatorEmail: "operator@system.io",
-  timezone: "Africa/Harare",
-  autoRefresh: true,
-  pushNotifications: true,
-  auditTrail: true,
-  theme: "light",
-};
-
-function applyTheme(theme: ThemeMode) {
-  document.documentElement.classList.toggle("dark", theme === "dark");
-  localStorage.setItem("theme", theme);
-}
-
-function loadSettings(): AppSettingsState {
-  try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if (!raw) {
-      const savedTheme = localStorage.getItem("theme") as ThemeMode | null;
-      if (savedTheme === "dark" || savedTheme === "light") {
-        return { ...defaultSettings, theme: savedTheme };
-      }
-      return defaultSettings;
-    }
-
-    const parsed = JSON.parse(raw) as Partial<AppSettingsState>;
-    const savedTheme = localStorage.getItem("theme") as ThemeMode | null;
-    const theme =
-      savedTheme === "dark" || savedTheme === "light"
-        ? savedTheme
-        : parsed.theme === "dark" || parsed.theme === "light"
-        ? parsed.theme
-        : defaultSettings.theme;
-
-    return {
-      ...defaultSettings,
-      ...parsed,
-      theme,
-    };
-  } catch {
-    return defaultSettings;
-  }
-}
+import { AppSettings, loadAppSettings, saveAppSettings } from "@/lib/userSettings";
+import { getTelemetryEvents } from "@/lib/telemetry";
 
 const navCards = [
   { label: "Dashboard", icon: LayoutDashboard, path: "/" },
@@ -90,16 +34,17 @@ const navCards = [
 
 export function SettingsPage() {
   const navigate = useNavigate();
-  const [settings, setSettings] = React.useState<AppSettingsState>(() => loadSettings());
+  const [settings, setSettings] = React.useState<AppSettings>(() => loadAppSettings());
+  const [telemetry, setTelemetry] = React.useState(() => getTelemetryEvents().slice(0, 8));
 
   React.useEffect(() => {
-    applyTheme(settings.theme);
+    document.documentElement.classList.toggle("dark", settings.theme === "dark");
   }, [settings.theme]);
 
   const saveSettings = () => {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-    localStorage.setItem("theme", settings.theme);
+    saveAppSettings(settings);
     toast.success("Settings saved");
+    setTelemetry(getTelemetryEvents().slice(0, 8));
   };
 
   return (
@@ -149,6 +94,23 @@ export function SettingsPage() {
                 value={settings.timezone}
                 onChange={(e) => setSettings((prev) => ({ ...prev, timezone: e.target.value }))}
               />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="landing-page">Default Landing Page</Label>
+              <select
+                id="landing-page"
+                value={settings.defaultLandingPage}
+                onChange={(e) =>
+                  setSettings((prev) => ({ ...prev, defaultLandingPage: e.target.value as AppSettings["defaultLandingPage"] }))
+                }
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="/">Dashboard</option>
+                <option value="/pipeline">Pipeline</option>
+                <option value="/intake">Lead Intake</option>
+                <option value="/health">System Health</option>
+                <option value="/settings">Settings</option>
+              </select>
             </div>
           </CardContent>
         </Card>
@@ -216,6 +178,38 @@ export function SettingsPage() {
                 onCheckedChange={(checked) => setSettings((prev) => ({ ...prev, pushNotifications: checked }))}
               />
             </div>
+            <div className="flex items-center justify-between rounded-lg border bg-background p-3">
+              <div className="flex items-center gap-2">
+                <Timer className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium">Refresh Interval (sec)</span>
+              </div>
+              <Input
+                value={String(settings.refreshIntervalSec)}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  setSettings((prev) => ({
+                    ...prev,
+                    refreshIntervalSec: Number.isFinite(n) ? Math.max(5, Math.min(120, Math.round(n))) : prev.refreshIntervalSec,
+                  }));
+                }}
+                className="h-8 w-20 text-right"
+                inputMode="numeric"
+              />
+            </div>
+            <div className="flex items-center justify-between rounded-lg border bg-background p-3">
+              <div className="flex items-center gap-2">
+                <Activity className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium">Dashboard Time Range</span>
+              </div>
+              <select
+                value={settings.dashboardRange}
+                onChange={(e) => setSettings((prev) => ({ ...prev, dashboardRange: e.target.value as "7d" | "30d" }))}
+                className="h-8 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="7d">Last 7 days</option>
+                <option value="30d">Last 30 days</option>
+              </select>
+            </div>
           </CardContent>
         </Card>
 
@@ -239,6 +233,28 @@ export function SettingsPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="border-none bg-muted/20">
+        <CardHeader>
+          <CardTitle className="text-base">Diagnostics</CardTitle>
+          <CardDescription>Recent client-side telemetry events for troubleshooting.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {telemetry.length ? (
+            telemetry.map((event, idx) => (
+              <div key={`${event.at}-${idx}`} className="rounded-md border bg-background p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold uppercase">{event.type}</span>
+                  <span className="text-[10px] text-muted-foreground">{new Date(event.at).toLocaleString()}</span>
+                </div>
+                <p className="text-xs mt-1 text-muted-foreground">{event.message}</p>
+              </div>
+            ))
+          ) : (
+            <div className="text-sm text-muted-foreground">No diagnostics captured yet.</div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

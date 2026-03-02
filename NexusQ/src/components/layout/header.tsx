@@ -1,10 +1,24 @@
-import { Bell, Search, Activity, ChevronDown, User, Settings, LogOut, Command } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
-// import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-// import { SidebarTrigger } from '@/components/ui/sidebar'
-import { Separator } from '@/components/ui/separator'
+import React from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  Bell,
+  Search,
+  Activity,
+  ChevronDown,
+  User,
+  Settings,
+  LogOut,
+  Command,
+  Menu,
+  UserPlus,
+  LayoutDashboard,
+  BarChart3,
+} from "lucide-react";
+import { toast } from "sonner";
+
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Separator } from "@/components/ui/separator";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,58 +26,134 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+} from "@/components/ui/dropdown-menu";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '@/components/ui/tooltip'
-import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
-import { toast } from 'sonner'
+} from "@/components/ui/tooltip";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import {
+  CommandDialog,
+  CommandInput,
+  CommandList,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+  CommandShortcut,
+  CommandSeparator,
+} from "@/components/ui/command";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useLeads } from "@/hooks/useLeads";
+import { loadAppSettings, SETTINGS_CHANGED_EVENT } from "@/lib/userSettings";
 
+const LAST_NOTIFICATION_READ_KEY = "nexusq.notifications.lastReadAt";
+
+function eventSeverity(eventType: string): "high" | "medium" | "low" {
+  const t = (eventType || "").toLowerCase();
+  if (t.includes("failed") || t.includes("error")) return "high";
+  if (t.includes("status") || t.includes("quoted") || t.includes("booked")) return "medium";
+  return "low";
+}
+
+function eventLabel(eventType: string) {
+  return (eventType || "unknown").replace(/_/g, " ");
+}
 
 export function Header({
   onToggleSidebar,
 }: {
-  onToggleSidebar: () => void
+  onToggleSidebar: () => void;
 }) {
-  const navigate = useNavigate()
+  const navigate = useNavigate();
+  const { leads, events } = useLeads();
+  const [commandOpen, setCommandOpen] = React.useState(false);
+  const [notificationsOpen, setNotificationsOpen] = React.useState(false);
+  const [lastReadAt, setLastReadAt] = React.useState<number>(() => {
+    const raw = localStorage.getItem(LAST_NOTIFICATION_READ_KEY);
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : 0;
+  });
+  const [settingsState, setSettingsState] = React.useState(() => loadAppSettings());
 
-  const runSearch = () => {
-    navigate('/pipeline')
-  }
- 
+  React.useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setCommandOpen((open) => !open);
+      }
+    };
+
+    const onSettingsChanged = () => {
+      setSettingsState(loadAppSettings());
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    window.addEventListener(SETTINGS_CHANGED_EVENT, onSettingsChanged as EventListener);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener(SETTINGS_CHANGED_EVENT, onSettingsChanged as EventListener);
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (!notificationsOpen) return;
+    const now = Date.now();
+    setLastReadAt(now);
+    localStorage.setItem(LAST_NOTIFICATION_READ_KEY, String(now));
+  }, [notificationsOpen]);
+
+  const unreadCount = React.useMemo(() => {
+    if (!settingsState.pushNotifications) return 0;
+    return events.filter((event) => {
+      const ts = new Date(event.created_at).getTime();
+      return Number.isFinite(ts) && ts > lastReadAt;
+    }).length;
+  }, [events, lastReadAt, settingsState.pushNotifications]);
+
+  const topLeads = React.useMemo(() => leads.slice(0, 8), [leads]);
+  const recentEvents = React.useMemo(() => {
+    const seen = new Set<string>();
+    const out: typeof events = [];
+    for (const event of events) {
+      const key = `${event.event_type}|${event.lead_id ?? "na"}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(event);
+      if (out.length >= 12) break;
+    }
+    return out;
+  }, [events]);
+
+  const navigateAndClose = (path: string) => {
+    navigate(path);
+    setCommandOpen(false);
+  };
+
   return (
     <TooltipProvider>
-     <header className="  sticky top-0 z-40 w-full glass h-16
-        pl-14 md:px-6 px-4
-        flex items-center justify-between
-        transition-all duration-300
-      ">
-        {/* Left section: Sidebar Toggle & Status */}
-      {/* <Button
-        variant="ghost"
-        size="icon"
-        onClick={onToggleSidebar}
-        className="-ml-2 md:ml-0"
+      <header
+        className="sticky top-0 z-40 w-full glass h-16 pl-14 md:px-6 px-4 flex items-center justify-between transition-all duration-300"
       >
-        <Menu className="h-5 w-5" />
-      </Button> */}
         <div className="flex items-center gap-2 md:gap-4 overflow-hidden flex-1 lg:flex-none">
-          {/* <SidebarTrigger className="-ml-2 md:ml-0" /> */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onToggleSidebar}
+            className="hidden lg:inline-flex h-8 w-8"
+            aria-label="Toggle sidebar"
+          >
+            <Menu className="h-4 w-4" />
+          </Button>
           <Separator orientation="vertical" className="h-4 hidden md:block" />
-          
+
           <div className="flex flex-col justify-center overflow-hidden">
-            <h2 className="text-sm font-bold tracking-tight truncate">
-              Operations
-            </h2>
+            <h2 className="text-sm font-bold tracking-tight truncate">Operations</h2>
             <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
               <span className="status-dot status-dot-success shrink-0" />
-              <span className="uppercase tracking-widest font-semibold truncate hidden xs:block">
-                System Active
-              </span>
+              <span className="uppercase tracking-widest font-semibold truncate hidden xs:block">System Active</span>
             </div>
           </div>
 
@@ -75,14 +165,17 @@ export function Header({
           </Badge>
         </div>
 
-        {/* Center section: Search (Desktop only) */}
         <div className="hidden lg:flex items-center max-w-sm xl:max-w-md w-full mx-8">
           <div className="relative w-full">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               type="search"
-              placeholder="Search systems..."
-              className="pl-9 bg-muted/30 border-none focus-visible:ring-1 focus-visible:ring-primary h-9 transition-all"
+              readOnly
+              onFocus={() => setCommandOpen(true)}
+              onClick={() => setCommandOpen(true)}
+              placeholder="Search leads, pages, activity..."
+              className="pl-9 bg-muted/30 border-none focus-visible:ring-1 focus-visible:ring-primary h-9 transition-all cursor-pointer"
+              aria-label="Open global search"
             />
             <kbd className="absolute right-2.5 top-2.5 h-4 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground flex">
               <Command className="h-2 w-2" /> K
@@ -90,9 +183,22 @@ export function Header({
           </div>
         </div>
 
-        {/* Right section: Actions & User */}
         <div className="flex items-center gap-1 md:gap-2 shrink-0">
-          {/* Action Buttons (Responsive) */}
+          <div className="hidden xl:flex items-center gap-1">
+            <Button variant="ghost" size="sm" className="gap-1.5 text-xs" onClick={() => navigate("/intake")}>
+              <UserPlus className="h-3.5 w-3.5" />
+              Add Lead
+            </Button>
+            <Button variant="ghost" size="sm" className="gap-1.5 text-xs" onClick={() => navigate("/pipeline")}>
+              <BarChart3 className="h-3.5 w-3.5" />
+              Pipeline
+            </Button>
+            <Button variant="ghost" size="sm" className="gap-1.5 text-xs" onClick={() => navigate("/health")}>
+              <Activity className="h-3.5 w-3.5" />
+              Health
+            </Button>
+          </div>
+
           <div className="flex items-center gap-1">
             <Tooltip>
               <TooltipTrigger asChild>
@@ -100,7 +206,8 @@ export function Header({
                   variant="ghost"
                   size="icon"
                   className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted/50 lg:hidden"
-                  onClick={runSearch}
+                  onClick={() => setCommandOpen(true)}
+                  aria-label="Search"
                 >
                   <Search className="h-4 w-4" />
                 </Button>
@@ -116,7 +223,8 @@ export function Header({
                   variant="ghost"
                   size="icon"
                   className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted/50 hidden md:flex"
-                  onClick={() => navigate('/health')}
+                  onClick={() => navigate("/health")}
+                  aria-label="System activity"
                 >
                   <Activity className="h-4 w-4" />
                 </Button>
@@ -132,23 +240,28 @@ export function Header({
                   variant="ghost"
                   size="icon"
                   className="relative h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                  onClick={() => navigate('/health')}
+                  onClick={() => setNotificationsOpen(true)}
+                  aria-label="Notifications"
                 >
                   <Bell className="h-4 w-4" />
-                  <span className="absolute top-2.5 right-2.5 h-1.5 w-1.5 rounded-full bg-status-success animate-pulse" />
+                  {settingsState.pushNotifications && unreadCount > 0 ? (
+                    <span className="absolute top-2.5 right-2.5 h-2 w-2 rounded-full bg-status-success animate-pulse" />
+                  ) : null}
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
                 <p>Notifications</p>
               </TooltipContent>
             </Tooltip>
+
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
                   className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                  onClick={() => navigate('/settings')}
+                  onClick={() => navigate("/settings")}
+                  aria-label="Settings"
                 >
                   <Settings className="h-4 w-4" />
                 </Button>
@@ -157,29 +270,23 @@ export function Header({
                 <p>Settings</p>
               </TooltipContent>
             </Tooltip>
-
           </div>
 
-          {/* Divider */}
           <div className="h-6 w-px bg-border/50 mx-1 hidden sm:block" />
 
-          {/* User Profile Dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="flex items-center gap-2 rounded-full md:rounded-lg p-1 md:pr-2 md:pl-1.5 hover:bg-muted/50 transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary group">
+              <button
+                className="flex items-center gap-2 rounded-full md:rounded-lg p-1 md:pr-2 md:pl-1.5 hover:bg-muted/50 transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary group"
+                aria-label="User menu"
+              >
                 <Avatar className="h-8 w-8 border border-border/50 ring-offset-background group-hover:ring-2 group-hover:ring-primary/20 transition-all">
                   <AvatarImage src="" />
-                  <AvatarFallback className="text-[10px] font-bold bg-primary text-primary-foreground">
-                    OP
-                  </AvatarFallback>
+                  <AvatarFallback className="text-[10px] font-bold bg-primary text-primary-foreground">OP</AvatarFallback>
                 </Avatar>
                 <div className="hidden md:flex flex-col text-left overflow-hidden">
-                  <span className="text-xs font-semibold leading-none truncate max-w-[80px]">
-                    Operator
-                  </span>
-                  <span className="text-[10px] text-muted-foreground truncate max-w-[80px]">
-                    Admin
-                  </span>
+                  <span className="text-xs font-semibold leading-none truncate max-w-[80px]">{settingsState.operatorName || "Operator"}</span>
+                  <span className="text-[10px] text-muted-foreground truncate max-w-[80px]">Admin</span>
                 </div>
                 <ChevronDown className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground transition-colors hidden md:block" />
               </button>
@@ -187,23 +294,23 @@ export function Header({
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuLabel>
                 <div className="flex flex-col">
-                  <span className="text-sm font-semibold">Operator Alpha</span>
-                  <span className="text-[10px] text-muted-foreground">operator@system.io</span>
+                  <span className="text-sm font-semibold">{settingsState.operatorName || "Operator Alpha"}</span>
+                  <span className="text-[10px] text-muted-foreground">{settingsState.operatorEmail || "operator@system.io"}</span>
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => navigate('/settings')}>
+              <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => navigate("/settings")}>
                 <User className="h-4 w-4" />
                 <span>Profile Settings</span>
               </DropdownMenuItem>
-              <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => navigate('/settings')}>
+              <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => navigate("/settings")}>
                 <Settings className="h-4 w-4" />
                 <span>System Config</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 className="gap-2 cursor-pointer text-destructive focus:text-destructive"
-                onClick={() => toast.info('Sign out is not configured yet.')}
+                onClick={() => toast.info("Sign out is not configured yet.")}
               >
                 <LogOut className="h-4 w-4" />
                 <span>Sign Out</span>
@@ -212,6 +319,119 @@ export function Header({
           </DropdownMenu>
         </div>
       </header>
+
+      <CommandDialog open={commandOpen} onOpenChange={setCommandOpen}>
+        <CommandInput placeholder="Search pages, leads, and activity..." />
+        <CommandList>
+          <CommandEmpty>No results found.</CommandEmpty>
+          <CommandGroup heading="Navigation">
+            <CommandItem onSelect={() => navigateAndClose("/")}>
+              <LayoutDashboard className="h-4 w-4" />
+              Dashboard
+              <CommandShortcut>G D</CommandShortcut>
+            </CommandItem>
+            <CommandItem onSelect={() => navigateAndClose("/pipeline")}>
+              <BarChart3 className="h-4 w-4" />
+              Pipeline
+              <CommandShortcut>G P</CommandShortcut>
+            </CommandItem>
+            <CommandItem onSelect={() => navigateAndClose("/intake")}>
+              <UserPlus className="h-4 w-4" />
+              Lead Intake
+              <CommandShortcut>G I</CommandShortcut>
+            </CommandItem>
+            <CommandItem onSelect={() => navigateAndClose("/health")}>
+              <Activity className="h-4 w-4" />
+              System Health
+              <CommandShortcut>G H</CommandShortcut>
+            </CommandItem>
+            <CommandItem onSelect={() => navigateAndClose("/settings")}>
+              <Settings className="h-4 w-4" />
+              Settings
+              <CommandShortcut>G S</CommandShortcut>
+            </CommandItem>
+          </CommandGroup>
+
+          <CommandSeparator />
+
+          <CommandGroup heading="Recent Leads">
+            {topLeads.length ? (
+              topLeads.map((lead) => (
+                <CommandItem key={lead.id} onSelect={() => navigateAndClose("/pipeline")}>
+                  <User className="h-4 w-4" />
+                  <span>{lead.name || lead.phone || "Unknown Lead"}</span>
+                  <CommandShortcut>{(lead.status || "new").toUpperCase()}</CommandShortcut>
+                </CommandItem>
+              ))
+            ) : (
+              <CommandItem disabled>No leads available.</CommandItem>
+            )}
+          </CommandGroup>
+        </CommandList>
+      </CommandDialog>
+
+      <Dialog open={notificationsOpen} onOpenChange={setNotificationsOpen}>
+        <DialogContent className="!left-auto !right-0 !top-0 !translate-x-0 !translate-y-0 h-screen w-[92vw] max-w-md rounded-none border-l p-0">
+          <DialogHeader className="p-4 pb-2 border-b">
+            <DialogTitle className="text-base flex items-center justify-between">
+              Notifications
+              <Badge variant="outline" className="text-[10px]">{unreadCount} unread</Badge>
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Live activity updates from lead events and workflows.
+            </DialogDescription>
+          </DialogHeader>
+
+          {!settingsState.pushNotifications ? (
+            <div className="m-4 rounded-md border p-3 text-xs text-muted-foreground">
+              Push notifications are disabled in settings.
+            </div>
+          ) : null}
+
+          <div className="max-h-[calc(100vh-96px)] overflow-y-auto p-3 space-y-2">
+            {recentEvents.length ? (
+              recentEvents.map((event) => (
+                <button
+                  key={event.id}
+                  onClick={() => {
+                    navigate("/pipeline");
+                    setNotificationsOpen(false);
+                  }}
+                  className="w-full rounded-lg border bg-card p-3 text-left hover:bg-muted/30 transition-colors"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="text-xs font-semibold capitalize">{eventLabel(event.event_type)}</div>
+                      <Badge
+                        variant="outline"
+                        className={
+                          eventSeverity(event.event_type) === "high"
+                            ? "text-[9px] border-status-error/40 text-status-error"
+                            : eventSeverity(event.event_type) === "medium"
+                            ? "text-[9px] border-status-warning/40 text-status-warning"
+                            : "text-[9px] border-status-info/40 text-status-info"
+                        }
+                      >
+                        {eventSeverity(event.event_type)}
+                      </Badge>
+                    </div>
+                    <div className="text-[10px] text-muted-foreground">
+                      {new Date(event.created_at).toLocaleTimeString()}
+                    </div>
+                  </div>
+                  <div className="mt-1 text-[11px] text-muted-foreground line-clamp-2">
+                    {event.lead_id ? `Lead #${event.lead_id.slice(0, 8)}` : "System event"}
+                  </div>
+                </button>
+              ))
+            ) : (
+              <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
+                No notifications yet.
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </TooltipProvider>
-  )
+  );
 }

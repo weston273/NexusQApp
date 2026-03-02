@@ -1,4 +1,4 @@
-// src/pages/Dashboard.tsx
+﻿// src/pages/Dashboard.tsx
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useLeads } from "@/hooks/useLeads";
@@ -216,7 +216,7 @@ function ConversionFunnel({ data }: { data: Array<{ stage: string; value: number
               fontSize: "12px",
             }}
           />
-          <Bar dataKey="value" fill="hsl(var(--chart-1))" radius={[0, 4, 4, 0]} barSize={20} />
+          <Bar dataKey="value" fill="hsl(var(--chart-2))" radius={[0, 4, 4, 0]} barSize={20} />
         </BarChart>
       </ResponsiveContainer>
     </div>
@@ -248,7 +248,7 @@ function ResponseBarChart({ data }: { data: Array<{ period: string; time: number
 }
 
 function ActivityPieChart({ data }: { data: Array<{ name: string; value: number }> }) {
-  const COLORS = ["hsl(var(--chart-1))", "hsl(var(--chart-3))", "hsl(var(--chart-4))"];
+  const COLORS = ["hsl(var(--chart-1))", "hsl(var(--chart-5))", "hsl(var(--chart-7))"];
 
   return (
     <div className="h-[200px] w-full mt-4">
@@ -278,14 +278,14 @@ function ActivityPieChart({ data }: { data: Array<{ name: string; value: number 
 // -------------------------
 export function Dashboard() {
   const navigate = useNavigate();
-  const { leads, events, pipelineRows, loading, error, reload } = useLeads();
+  const { leads, events, pipelineRows, loading, error, lastLoadedAt, reload } = useLeads();
 
-  // ✅ Total pipeline value from pipeline table (live via realtime)
+  // ? Total pipeline value from pipeline table (live via realtime)
   const pipelineValue = React.useMemo(() => {
     return (pipelineRows ?? []).reduce((sum, r) => sum + (Number(r.value) || 0), 0);
   }, [pipelineRows]);
 
-  // ✅ Pipeline Summary should come from pipeline.stage (real)
+  // ? Pipeline Summary should come from pipeline.stage (real)
   const pipelineSummary = React.useMemo(() => {
     const counts = { new: 0, qualifying: 0, quoted: 0, booked: 0 };
 
@@ -388,7 +388,7 @@ export function Dashboard() {
     return sorted.map(([name, value]) => ({ name: (name ?? "unknown").replace(/_/g, " "), value }));
   }, [events]);
 
-  // ✅ FIX: build a reliable lookup map from leads -> name
+  // ? FIX: build a reliable lookup map from leads -> name
   // (your version had `l.name || l.name` and no typing; also guard empty strings)
   const leadNameById = React.useMemo(() => {
     const m = new Map<string, string>();
@@ -403,7 +403,7 @@ export function Dashboard() {
     return m;
   }, [leads]);
 
-  // ✅ FIX: smarter name resolution for events (covers lead_events payload patterns)
+  // ? FIX: smarter name resolution for events (covers lead_events payload patterns)
   const recentActivity = React.useMemo(() => {
     const actionMap: Record<string, string> = {
       lead_created: "Requested Service",
@@ -421,7 +421,7 @@ export function Dashboard() {
         e?.payload_json?.lead_snapshot?.full_name,
         e?.payload_json?.lead?.name,
         e?.payload_json?.lead?.full_name,
-        e?.payload_json?.raw?.name, // 👈 your payload_json.raw.name exists
+        e?.payload_json?.raw?.name, // ?? your payload_json.raw.name exists
       ];
 
       for (const c of candidates) {
@@ -518,6 +518,9 @@ export function Dashboard() {
         <div>
           <h1 className="text-3xl font-bold">Command Center</h1>
           <p className="text-muted-foreground mt-1">Real-time revenue operations and system health.</p>
+          <p className="text-[11px] text-muted-foreground mt-1">
+            Last updated: {lastLoadedAt ? lastLoadedAt.toLocaleTimeString() : "Not yet synced"}
+          </p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -534,12 +537,24 @@ export function Dashboard() {
         </div>
       </div>
 
+      {!leads.length && (
+        <Card className="border-dashed bg-muted/10">
+          <CardContent className="p-8 text-center space-y-3">
+            <h3 className="text-lg font-semibold">No leads yet</h3>
+            <p className="text-sm text-muted-foreground">
+              Add your first lead to unlock real-time trends, conversions, and automation insights.
+            </p>
+            <Button onClick={() => navigate("/intake")}>Add First Lead</Button>
+          </CardContent>
+        </Card>
+      )}
+
       {/* 1) Pipeline Summary FIRST */}
       <PipelineSummaryFunnel data={pipelineSummary} totalValue={pipelineValue} onViewPipeline={() => navigate("/pipeline")} />
 
       {/* 2) Lead volume + stat cards */}
       <div className="grid gap-6 lg:grid-cols-4">
-        <Card className="lg:col-span-2 border-none bg-muted/30">
+        <Card className="lg:col-span-2 border-none card-surface-a">
           <CardHeader>
             <CardTitle className="text-lg">Lead Volume Trend</CardTitle>
             <CardDescription>Leads captured over the last 7 days.</CardDescription>
@@ -551,7 +566,7 @@ export function Dashboard() {
 
         <div className="lg:col-span-2 grid gap-4 md:grid-cols-2">
           {stats.map((stat) => (
-            <Card key={stat.label} className="border-none bg-muted/30">
+            <Card key={stat.label} className={`border-none ${["card-surface-a", "card-surface-b", "card-surface-c", "card-surface-d"][stats.indexOf(stat) % 4]}`}>
               <CardContent className="p-6">
                 <div className="flex items-center justify-between space-y-0 pb-2">
                   <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60">{stat.label}</p>
@@ -580,7 +595,7 @@ export function Dashboard() {
 
       {/* 3) Other charts row */}
       <div className="grid gap-6 md:grid-cols-3">
-        <Card className="border-none bg-muted/20">
+        <Card className="border-none card-surface-b">
           <CardHeader>
             <CardTitle className="text-base">Conversion Pipeline</CardTitle>
             <CardDescription>Where leads progress or drop off.</CardDescription>
@@ -590,7 +605,7 @@ export function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border-none bg-muted/20">
+        <Card className="border-none card-surface-c">
           <CardHeader>
             <CardTitle className="text-base">Response Speed</CardTitle>
             <CardDescription>Average minutes to respond.</CardDescription>
@@ -600,7 +615,7 @@ export function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border-none bg-muted/20">
+        <Card className="border-none card-surface-d">
           <CardHeader>
             <CardTitle className="text-base">Interaction Breakdown</CardTitle>
             <CardDescription>Activity distribution across channels.</CardDescription>
@@ -682,3 +697,4 @@ export function Dashboard() {
     </div>
   );
 }
+

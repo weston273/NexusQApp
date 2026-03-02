@@ -19,6 +19,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { loadAppSettings, SETTINGS_CHANGED_EVENT } from "@/lib/userSettings";
+import { withRetry } from "@/lib/network";
+import { PageHeader } from "@/components/ui/page-header";
 
 type HealthService = {
   name: string;
@@ -104,7 +108,9 @@ async function fetchWithTimeout(url: string, ms = 12000) {
 }
 
 async function fetchHealthStatus(): Promise<HealthPayload> {
-  const results = await Promise.allSettled(HEALTH_URLS.map((url) => fetchWithTimeout(url, 12000)));
+  const results = await Promise.allSettled(
+    HEALTH_URLS.map((url) => withRetry(() => fetchWithTimeout(url, 12000), { retries: 2, baseDelayMs: 400 }))
+  );
   const okRes = results.find((r) => r.status === "fulfilled" && r.value.ok);
 
   if (!okRes || okRes.status !== "fulfilled") {
@@ -171,6 +177,8 @@ export function Health() {
   const [loading, setLoading] = React.useState(true);
   const [payload, setPayload] = React.useState<HealthPayload | null>(null);
   const [err, setErr] = React.useState<string | null>(null);
+  const [lastRefreshAt, setLastRefreshAt] = React.useState<Date | null>(null);
+  const [appSettings, setAppSettings] = React.useState(() => loadAppSettings());
 
   const run = React.useCallback(async () => {
     setLoading(true);
@@ -182,12 +190,19 @@ export function Health() {
         logs: dedupeLogs(data.logs ?? []),
       });
       setErr(null);
+      setLastRefreshAt(new Date());
     } catch (e: any) {
       setErr(e?.message || "Failed to fetch health");
       setPayload(null);
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  React.useEffect(() => {
+    const onSettingsChanged = () => setAppSettings(loadAppSettings());
+    window.addEventListener(SETTINGS_CHANGED_EVENT, onSettingsChanged as EventListener);
+    return () => window.removeEventListener(SETTINGS_CHANGED_EVENT, onSettingsChanged as EventListener);
   }, []);
 
   React.useEffect(() => {
@@ -198,31 +213,50 @@ export function Health() {
     };
 
     tick();
-    const t = setInterval(() => {
-      tick().catch(() => {});
-    }, 15000);
+    if (!appSettings.autoRefresh) {
+      return () => {
+        mounted = false;
+      };
+    }
+
+    const t = setInterval(() => tick().catch(() => {}), Math.max(5000, appSettings.refreshIntervalSec * 1000));
 
     return () => {
       mounted = false;
       clearInterval(t);
     };
-  }, [run]);
+  }, [appSettings.autoRefresh, appSettings.refreshIntervalSec, run]);
 
   const services = payload?.services ?? [];
   const logs = payload?.logs ?? [];
   const headlineOk = payload?.allOperational ?? false;
 
+  if (loading && !payload) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-8 w-48" />
+          <Skeleton className="h-9 w-56" />
+        </div>
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+          <Skeleton className="h-44 w-full rounded-xl" />
+          <Skeleton className="h-44 w-full rounded-xl" />
+          <Skeleton className="h-44 w-full rounded-xl" />
+          <Skeleton className="h-44 w-full rounded-xl" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold">System Health</h1>
-          <p className="text-muted-foreground mt-1">
-            Operational status of Nexus Q automation layers (live from Workflow E).
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-3">
+        <PageHeader
+          title="System Health"
+          description="Operational status of Nexus Q automation layers (live from Workflow E)."
+          lastUpdatedLabel={`Last updated: ${lastRefreshAt ? lastRefreshAt.toLocaleTimeString() : "Not yet synced"}`}
+        />
+        <div className="flex items-center gap-2 justify-end">
           <Button variant="outline" size="sm" className="gap-2" onClick={() => run()}>
             <RefreshCcw className="h-4 w-4" />
             Refresh
@@ -257,12 +291,30 @@ export function Health() {
       )}
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        {!services.length && (
+          <Card className="md:col-span-2 lg:col-span-4 border-dashed bg-muted/10">
+            <CardContent className="p-6 text-center text-sm text-muted-foreground">
+              No health service snapshots available yet.
+            </CardContent>
+          </Card>
+        )}
         {services.map((service) => {
           const Icon = pickIcon(service.name);
           const freshness = freshnessPercent(service.minutes_since);
 
           return (
-            <Card key={service.name} className="border-none bg-muted/30">
+            <Card
+              key={service.name}
+              className={`border-none ${
+                service.status === "optimal"
+                  ? "card-surface-c"
+                  : service.status === "stale"
+                  ? "card-surface-d"
+                  : service.status === "degraded"
+                  ? "card-surface-b"
+                  : "card-surface-a"
+              }`}
+            >
               <CardContent className="p-6 space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="h-10 w-10 rounded-lg bg-background flex items-center justify-center border">
