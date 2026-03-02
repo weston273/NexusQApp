@@ -42,6 +42,7 @@ type HealthPayload = {
 // ✅ IMPORTANT: only use /webhook for real frontend usage
 const HEALTH_URLS = [
   "https://n8n-k7j4.onrender.com/webhook/health-status",
+  "https://n8n-k7j4.onrender.com/webhook-test/health-status",
 ];
 
 // -------------------------
