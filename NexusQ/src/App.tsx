@@ -19,7 +19,7 @@ import { useLeads } from '@/hooks/useLeads';
 
 function App() {
 
-  const { loading } = useLeads();
+  const { loading, error, reload } = useLeads();
 
   React.useEffect(() => {
     const onError = (event: ErrorEvent) => {
@@ -39,7 +39,13 @@ function App() {
   return (
     <>
       <AppErrorBoundary>
-        <SplashGate ready={!loading}>
+        <SplashGate
+          ready={!loading && !error}
+          error={error}
+          onRetry={() => {
+            void reload();
+          }}
+        >
           <RouteProgress />
           <Shell>
             <AnimatedRoutes />
