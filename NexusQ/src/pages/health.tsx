@@ -90,14 +90,6 @@ type FetchHealthStatusResult = {
   activeEndpointUrl: string | null;
 };
 
-type FreshnessPoint = {
-  at: string;
-  value: number;
-  minutesSince: number | null;
-};
-
-type FreshnessTimeline = Record<WorkflowKey, FreshnessPoint[]>;
-
 const HEALTH_URLS = [
   "https://n8n-k7j4.onrender.com/webhook/health-status",
   "https://n8n-k7j4.onrender.com/webhook-test/health-status",
@@ -107,15 +99,10 @@ const NOMINAL_REFRESH_SEC = 45;
 const INCIDENT_REFRESH_SEC = 15;
 const HEALTHY_CYCLES_TO_RECOVER = 3;
 const FRESHNESS_STALE_BADGE_MINUTES = 20;
-const FRESHNESS_TREND_WINDOW_MINUTES = 60;
-const FRESHNESS_TREND_MAX_POINTS = 240;
-const SPARKLINE_WIDTH = 180;
-const SPARKLINE_HEIGHT = 28;
 const SUPABASE_URL = String(import.meta.env.VITE_SUPABASE_URL ?? "");
 
 const HEALTH_LOG_STORAGE_KEY = "nexusq-health-log-history-v1";
 const HEALTH_SERVICE_STORAGE_KEY = "nexusq-health-services-v1";
-const HEALTH_FRESHNESS_STORAGE_KEY = "nexusq-health-freshness-v1";
 const WORKFLOW_KEYS = ["A", "B", "C", "D"] as const;
 type WorkflowKey = (typeof WORKFLOW_KEYS)[number];
 
@@ -184,64 +171,6 @@ function effectiveMinutesSince(service: HealthService) {
     }
   }
   return service.minutes_since;
-}
-
-function createEmptyFreshnessTimeline(): FreshnessTimeline {
-  return { A: [], B: [], C: [], D: [] };
-}
-
-function trimFreshnessPoints(points: FreshnessPoint[], nowIso: string) {
-  const nowTs = new Date(nowIso).getTime();
-  const cutoff = nowTs - FRESHNESS_TREND_WINDOW_MINUTES * 60_000;
-  return points
-    .filter((point) => {
-      const ts = new Date(point.at).getTime();
-      return Number.isFinite(ts) && ts >= cutoff;
-    })
-    .slice(-FRESHNESS_TREND_MAX_POINTS);
-}
-
-function appendFreshnessPoints(timeline: FreshnessTimeline, services: HealthService[], nowIso: string): FreshnessTimeline {
-  const next: FreshnessTimeline = {
-    A: [...timeline.A],
-    B: [...timeline.B],
-    C: [...timeline.C],
-    D: [...timeline.D],
-  };
-
-  const byWorkflow = new Map<WorkflowKey, HealthService>();
-  for (const service of services) {
-    const key = inferWorkflowKey(service.name);
-    if (key) byWorkflow.set(key, service);
-  }
-
-  for (const key of WORKFLOW_KEYS) {
-    const service = byWorkflow.get(key);
-    if (!service) continue;
-    const minutes = effectiveMinutesSince(service);
-    const point: FreshnessPoint = {
-      at: nowIso,
-      value: freshnessPercent(minutes),
-      minutesSince: minutes,
-    };
-    next[key] = trimFreshnessPoints([...next[key], point], nowIso);
-  }
-
-  return next;
-}
-
-function buildSparklinePolyline(points: FreshnessPoint[]) {
-  if (!points.length) return "";
-  const samples = points.length === 1 ? [points[0], points[0]] : points;
-  const count = samples.length - 1;
-  return samples
-    .map((point, index) => {
-      const x = count === 0 ? 0 : (index / count) * SPARKLINE_WIDTH;
-      const normalized = clamp(point.value, 0, 100);
-      const y = SPARKLINE_HEIGHT - (normalized / 100) * SPARKLINE_HEIGHT;
-      return `${x.toFixed(2)},${y.toFixed(2)}`;
-    })
-    .join(" ");
 }
 
 function staleSignalLabel(minutesSince: number | null, status: HealthService["status"]) {
@@ -607,42 +536,6 @@ function persistServices(services: HealthService[]) {
   }
 }
 
-function readStoredFreshnessTimeline() {
-  if (typeof window === "undefined") return createEmptyFreshnessTimeline();
-
-  const empty = createEmptyFreshnessTimeline();
-  try {
-    const raw = localStorage.getItem(HEALTH_FRESHNESS_STORAGE_KEY);
-    if (!raw) return empty;
-    const parsed = JSON.parse(raw) as Partial<Record<WorkflowKey, FreshnessPoint[]>>;
-    const nowIso = new Date().toISOString();
-    for (const key of WORKFLOW_KEYS) {
-      const values = parsed?.[key];
-      if (!Array.isArray(values)) continue;
-      const normalized = values
-        .filter((value) => value && typeof value.at === "string")
-        .map((value) => ({
-          at: value.at,
-          value: clamp(Number(value.value ?? 0), 0, 100),
-          minutesSince: typeof value.minutesSince === "number" ? Math.max(0, Math.round(value.minutesSince)) : null,
-        }));
-      empty[key] = trimFreshnessPoints(normalized, nowIso);
-    }
-    return empty;
-  } catch {
-    return empty;
-  }
-}
-
-function persistFreshnessTimeline(timeline: FreshnessTimeline) {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(HEALTH_FRESHNESS_STORAGE_KEY, JSON.stringify(timeline));
-  } catch {
-    // Ignore storage failures and keep in-memory state.
-  }
-}
-
 function readStoredLogs() {
   if (typeof window === "undefined") return [] as HealthLog[];
   try {
@@ -718,10 +611,8 @@ export function Health() {
   const [lastRefreshAt, setLastRefreshAt] = React.useState<Date | null>(null);
   const [appSettings, setAppSettings] = React.useState(() => loadAppSettings());
   const [serviceSnapshot, setServiceSnapshot] = React.useState<HealthService[]>(() => readStoredServices());
-  const [freshnessTimeline, setFreshnessTimeline] = React.useState<FreshnessTimeline>(() => readStoredFreshnessTimeline());
   const [logHistory, setLogHistory] = React.useState<HealthLog[]>(() => readStoredLogs());
   const [networkSnapshot, setNetworkSnapshot] = React.useState<NetworkSnapshot>(() => createInitialNetworkSnapshot());
-  const [, setMinuteTick] = React.useState(0);
   const nominalRefreshSec = Math.max(NOMINAL_REFRESH_SEC, appSettings.refreshIntervalSec);
   const [adaptiveIntervalSec, setAdaptiveIntervalSec] = React.useState<number>(nominalRefreshSec);
   const [nextRefreshAt, setNextRefreshAt] = React.useState<number | null>(null);
@@ -739,28 +630,10 @@ export function Health() {
   }, [nominalRefreshSec]);
 
   React.useEffect(() => {
-    const t = setInterval(() => {
-      setMinuteTick((prev) => prev + 1);
-    }, 60_000);
-    return () => clearInterval(t);
-  }, []);
-
-  React.useEffect(() => {
     if (!previousServicesRef.current.length && serviceSnapshot.length) {
       previousServicesRef.current = serviceSnapshot;
     }
   }, [serviceSnapshot]);
-
-  React.useEffect(() => {
-    if (!serviceSnapshot.length) return;
-    const hasAnyTrend = WORKFLOW_KEYS.some((key) => freshnessTimeline[key].length > 0);
-    if (hasAnyTrend) return;
-
-    const nowIso = new Date().toISOString();
-    const seeded = appendFreshnessPoints(createEmptyFreshnessTimeline(), serviceSnapshot, nowIso);
-    setFreshnessTimeline(seeded);
-    persistFreshnessTimeline(seeded);
-  }, [freshnessTimeline, serviceSnapshot]);
 
   const appendLogs = React.useCallback((entries: HealthLog[]) => {
     if (!entries.length) return;
@@ -816,12 +689,6 @@ export function Health() {
       });
       setServiceSnapshot(incomingServices);
       persistServices(incomingServices);
-      const nowIso = new Date().toISOString();
-      setFreshnessTimeline((prev) => {
-        const next = appendFreshnessPoints(prev, incomingServices, nowIso);
-        persistFreshnessTimeline(next);
-        return next;
-      });
       previousServicesRef.current = incomingServices;
       setNetworkSnapshot({
         endpoints: result.endpointProbes,
@@ -1036,14 +903,6 @@ export function Health() {
           const Icon = pickIcon(service.name);
           const minutesSince = effectiveMinutesSince(service);
           const freshness = freshnessPercent(minutesSince);
-          const workflowKey = inferWorkflowKey(service.name);
-          const trendSeed = workflowKey ? freshnessTimeline[workflowKey] ?? [] : [];
-          const trendNowIso = new Date().toISOString();
-          const trendPoints = trimFreshnessPoints(
-            [...trendSeed, { at: trendNowIso, value: freshness, minutesSince }],
-            trendNowIso
-          );
-          const trendPolyline = buildSparklinePolyline(trendPoints);
           const staleSignal = staleSignalLabel(minutesSince, service.status);
 
           return (
@@ -1093,25 +952,6 @@ export function Health() {
                   <Progress value={freshness} className="h-1" />
                 </div>
 
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between text-[10px] font-bold">
-                    <span className="opacity-60 uppercase">60m Trend</span>
-                    <span className="opacity-60">{trendPoints.length} pts</span>
-                  </div>
-                  <div className="h-8 rounded-md border bg-background/60 px-1 py-1">
-                    <svg viewBox={`0 0 ${SPARKLINE_WIDTH} ${SPARKLINE_HEIGHT}`} className="h-full w-full" preserveAspectRatio="none">
-                      <polyline
-                        points={trendPolyline}
-                        fill="none"
-                        stroke="hsl(var(--primary))"
-                        strokeWidth={2}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </div>
-                </div>
-
                 {service.error ? <div className="text-[10px] text-status-warning leading-snug">{service.error}</div> : null}
               </CardContent>
             </Card>
@@ -1120,15 +960,15 @@ export function Health() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2 border-none bg-muted/10">
+        <Card className="lg:col-span-2 border-none bg-muted/10 h-[30rem] flex flex-col">
           <CardHeader>
             <CardTitle className="text-lg">Real-time Activity Log</CardTitle>
             <CardDescription>
               Full retained event history from Workflow E and Health UI ({logs.length} entries).
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-0 font-mono text-xs max-h-[34rem] overflow-y-auto pr-1">
+          <CardContent className="flex-1 min-h-0">
+            <div className="space-y-0 font-mono text-xs h-full overflow-y-auto pr-1">
               {logs.map((log, i) => (
                 <div
                   key={`${log.time ?? "na"}-${log.source}-${i}`}
@@ -1162,12 +1002,12 @@ export function Health() {
         </Card>
 
         <div className="space-y-6">
-          <Card className="border-none bg-muted/30">
+          <Card className="border-none bg-muted/30 h-[30rem] flex flex-col">
             <CardHeader>
               <CardTitle className="text-lg">Network Map</CardTitle>
               <CardDescription>Live health endpoint probes, latency, and browser connectivity.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4 flex-1 min-h-0 overflow-y-auto pr-1">
               <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-xl border bg-background/60 p-3">
                   <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-muted-foreground">
