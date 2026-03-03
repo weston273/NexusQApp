@@ -90,6 +90,14 @@ type FetchHealthStatusResult = {
   activeEndpointUrl: string | null;
 };
 
+type FreshnessPoint = {
+  at: string;
+  value: number;
+  minutesSince: number | null;
+};
+
+type FreshnessTimeline = Record<WorkflowKey, FreshnessPoint[]>;
+
 const HEALTH_URLS = [
   "https://n8n-k7j4.onrender.com/webhook/health-status",
   "https://n8n-k7j4.onrender.com/webhook-test/health-status",
@@ -98,9 +106,16 @@ const HEALTH_URLS = [
 const NOMINAL_REFRESH_SEC = 45;
 const INCIDENT_REFRESH_SEC = 15;
 const HEALTHY_CYCLES_TO_RECOVER = 3;
+const FRESHNESS_STALE_BADGE_MINUTES = 20;
+const FRESHNESS_TREND_WINDOW_MINUTES = 60;
+const FRESHNESS_TREND_MAX_POINTS = 240;
+const SPARKLINE_WIDTH = 180;
+const SPARKLINE_HEIGHT = 28;
 const SUPABASE_URL = String(import.meta.env.VITE_SUPABASE_URL ?? "");
 
 const HEALTH_LOG_STORAGE_KEY = "nexusq-health-log-history-v1";
+const HEALTH_SERVICE_STORAGE_KEY = "nexusq-health-services-v1";
+const HEALTH_FRESHNESS_STORAGE_KEY = "nexusq-health-freshness-v1";
 const WORKFLOW_KEYS = ["A", "B", "C", "D"] as const;
 type WorkflowKey = (typeof WORKFLOW_KEYS)[number];
 
@@ -169,6 +184,84 @@ function effectiveMinutesSince(service: HealthService) {
     }
   }
   return service.minutes_since;
+}
+
+function createEmptyFreshnessTimeline(): FreshnessTimeline {
+  return { A: [], B: [], C: [], D: [] };
+}
+
+function trimFreshnessPoints(points: FreshnessPoint[], nowIso: string) {
+  const nowTs = new Date(nowIso).getTime();
+  const cutoff = nowTs - FRESHNESS_TREND_WINDOW_MINUTES * 60_000;
+  return points
+    .filter((point) => {
+      const ts = new Date(point.at).getTime();
+      return Number.isFinite(ts) && ts >= cutoff;
+    })
+    .slice(-FRESHNESS_TREND_MAX_POINTS);
+}
+
+function appendFreshnessPoints(timeline: FreshnessTimeline, services: HealthService[], nowIso: string): FreshnessTimeline {
+  const next: FreshnessTimeline = {
+    A: [...timeline.A],
+    B: [...timeline.B],
+    C: [...timeline.C],
+    D: [...timeline.D],
+  };
+
+  const byWorkflow = new Map<WorkflowKey, HealthService>();
+  for (const service of services) {
+    const key = inferWorkflowKey(service.name);
+    if (key) byWorkflow.set(key, service);
+  }
+
+  for (const key of WORKFLOW_KEYS) {
+    const service = byWorkflow.get(key);
+    if (!service) continue;
+    const minutes = effectiveMinutesSince(service);
+    const point: FreshnessPoint = {
+      at: nowIso,
+      value: freshnessPercent(minutes),
+      minutesSince: minutes,
+    };
+    next[key] = trimFreshnessPoints([...next[key], point], nowIso);
+  }
+
+  return next;
+}
+
+function buildSparklinePolyline(points: FreshnessPoint[]) {
+  if (!points.length) return "";
+  const samples = points.length === 1 ? [points[0], points[0]] : points;
+  const count = samples.length - 1;
+  return samples
+    .map((point, index) => {
+      const x = count === 0 ? 0 : (index / count) * SPARKLINE_WIDTH;
+      const normalized = clamp(point.value, 0, 100);
+      const y = SPARKLINE_HEIGHT - (normalized / 100) * SPARKLINE_HEIGHT;
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    })
+    .join(" ");
+}
+
+function staleSignalLabel(minutesSince: number | null, status: HealthService["status"]) {
+  if (minutesSince == null) return null;
+  if (status === "degraded" && minutesSince >= 5) {
+    return { label: `Delayed ${minutesSince}m`, tone: "danger" as const };
+  }
+  if (minutesSince >= 60) {
+    return { label: `Idle ${minutesSince}m`, tone: "danger" as const };
+  }
+  if (minutesSince >= FRESHNESS_STALE_BADGE_MINUTES) {
+    return { label: `Stale ${minutesSince}m`, tone: "warning" as const };
+  }
+  return null;
+}
+
+function staleSignalClasses(tone: "warning" | "danger") {
+  return tone === "danger"
+    ? "border-status-error/40 bg-status-error/15 text-status-error"
+    : "border-status-warning/40 bg-status-warning/15 text-status-warning";
 }
 
 function pickIcon(serviceName: string) {
@@ -492,6 +585,64 @@ function buildWorkflowServices(list: HealthService[], previous: HealthService[])
   return WORKFLOW_KEYS.map((key) => byWorkflow.get(key) ?? previousByWorkflow.get(key) ?? createFallbackService(key));
 }
 
+function readStoredServices() {
+  if (typeof window === "undefined") return [] as HealthService[];
+  try {
+    const raw = localStorage.getItem(HEALTH_SERVICE_STORAGE_KEY);
+    if (!raw) return [] as HealthService[];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [] as HealthService[];
+    return buildWorkflowServices(dedupeServices(parsed as HealthService[]), []);
+  } catch {
+    return [] as HealthService[];
+  }
+}
+
+function persistServices(services: HealthService[]) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(HEALTH_SERVICE_STORAGE_KEY, JSON.stringify(services));
+  } catch {
+    // Ignore storage failures and keep in-memory state.
+  }
+}
+
+function readStoredFreshnessTimeline() {
+  if (typeof window === "undefined") return createEmptyFreshnessTimeline();
+
+  const empty = createEmptyFreshnessTimeline();
+  try {
+    const raw = localStorage.getItem(HEALTH_FRESHNESS_STORAGE_KEY);
+    if (!raw) return empty;
+    const parsed = JSON.parse(raw) as Partial<Record<WorkflowKey, FreshnessPoint[]>>;
+    const nowIso = new Date().toISOString();
+    for (const key of WORKFLOW_KEYS) {
+      const values = parsed?.[key];
+      if (!Array.isArray(values)) continue;
+      const normalized = values
+        .filter((value) => value && typeof value.at === "string")
+        .map((value) => ({
+          at: value.at,
+          value: clamp(Number(value.value ?? 0), 0, 100),
+          minutesSince: typeof value.minutesSince === "number" ? Math.max(0, Math.round(value.minutesSince)) : null,
+        }));
+      empty[key] = trimFreshnessPoints(normalized, nowIso);
+    }
+    return empty;
+  } catch {
+    return empty;
+  }
+}
+
+function persistFreshnessTimeline(timeline: FreshnessTimeline) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(HEALTH_FRESHNESS_STORAGE_KEY, JSON.stringify(timeline));
+  } catch {
+    // Ignore storage failures and keep in-memory state.
+  }
+}
+
 function readStoredLogs() {
   if (typeof window === "undefined") return [] as HealthLog[];
   try {
@@ -566,14 +717,17 @@ export function Health() {
   const [err, setErr] = React.useState<string | null>(null);
   const [lastRefreshAt, setLastRefreshAt] = React.useState<Date | null>(null);
   const [appSettings, setAppSettings] = React.useState(() => loadAppSettings());
+  const [serviceSnapshot, setServiceSnapshot] = React.useState<HealthService[]>(() => readStoredServices());
+  const [freshnessTimeline, setFreshnessTimeline] = React.useState<FreshnessTimeline>(() => readStoredFreshnessTimeline());
   const [logHistory, setLogHistory] = React.useState<HealthLog[]>(() => readStoredLogs());
   const [networkSnapshot, setNetworkSnapshot] = React.useState<NetworkSnapshot>(() => createInitialNetworkSnapshot());
+  const [, setMinuteTick] = React.useState(0);
   const nominalRefreshSec = Math.max(NOMINAL_REFRESH_SEC, appSettings.refreshIntervalSec);
   const [adaptiveIntervalSec, setAdaptiveIntervalSec] = React.useState<number>(nominalRefreshSec);
   const [nextRefreshAt, setNextRefreshAt] = React.useState<number | null>(null);
   const [secondsUntilRefresh, setSecondsUntilRefresh] = React.useState<number | null>(null);
   const [refreshCycleToken, setRefreshCycleToken] = React.useState(0);
-  const previousServicesRef = React.useRef<HealthService[]>([]);
+  const previousServicesRef = React.useRef<HealthService[]>(serviceSnapshot);
   const healthyCyclesRef = React.useRef(0);
   const adaptiveIntervalRef = React.useRef<number>(nominalRefreshSec);
 
@@ -583,6 +737,30 @@ export function Health() {
       setAdaptiveIntervalSec(nominalRefreshSec);
     }
   }, [nominalRefreshSec]);
+
+  React.useEffect(() => {
+    const t = setInterval(() => {
+      setMinuteTick((prev) => prev + 1);
+    }, 60_000);
+    return () => clearInterval(t);
+  }, []);
+
+  React.useEffect(() => {
+    if (!previousServicesRef.current.length && serviceSnapshot.length) {
+      previousServicesRef.current = serviceSnapshot;
+    }
+  }, [serviceSnapshot]);
+
+  React.useEffect(() => {
+    if (!serviceSnapshot.length) return;
+    const hasAnyTrend = WORKFLOW_KEYS.some((key) => freshnessTimeline[key].length > 0);
+    if (hasAnyTrend) return;
+
+    const nowIso = new Date().toISOString();
+    const seeded = appendFreshnessPoints(createEmptyFreshnessTimeline(), serviceSnapshot, nowIso);
+    setFreshnessTimeline(seeded);
+    persistFreshnessTimeline(seeded);
+  }, [freshnessTimeline, serviceSnapshot]);
 
   const appendLogs = React.useCallback((entries: HealthLog[]) => {
     if (!entries.length) return;
@@ -635,6 +813,14 @@ export function Health() {
         ...result.payload,
         services: incomingServices,
         logs: remoteLogs,
+      });
+      setServiceSnapshot(incomingServices);
+      persistServices(incomingServices);
+      const nowIso = new Date().toISOString();
+      setFreshnessTimeline((prev) => {
+        const next = appendFreshnessPoints(prev, incomingServices, nowIso);
+        persistFreshnessTimeline(next);
+        return next;
       });
       previousServicesRef.current = incomingServices;
       setNetworkSnapshot({
@@ -749,7 +935,11 @@ export function Health() {
     return () => clearInterval(t);
   }, [appSettings.autoRefresh, nextRefreshAt]);
 
-  const services = payload?.services?.length ? payload.services : WORKFLOW_KEYS.map((key) => createFallbackService(key));
+  const services = payload?.services?.length
+    ? payload.services
+    : serviceSnapshot.length
+    ? serviceSnapshot
+    : WORKFLOW_KEYS.map((key) => createFallbackService(key));
   const logs = logHistory;
   const headlineOk = payload?.allOperational ?? false;
   const incidentMode = adaptiveIntervalSec === INCIDENT_REFRESH_SEC;
@@ -763,7 +953,7 @@ export function Health() {
     [appSettings, networkSnapshot, payload?.generated_at]
   );
 
-  if (loading && !payload) {
+  if (loading && !payload && !serviceSnapshot.length) {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
@@ -808,7 +998,7 @@ export function Health() {
               <RefreshCcw className="h-3.5 w-3.5" />
               <span className="text-[10px] font-bold uppercase tracking-wider">
                 {incidentMode ? "Rapid Monitor" : "Auto Refresh"} {adaptiveIntervalSec}s
-                {secondsUntilRefresh != null ? ` • ${secondsUntilRefresh}s` : ""}
+                {secondsUntilRefresh != null ? ` | ${secondsUntilRefresh}s` : ""}
               </span>
             </div>
           ) : (
@@ -846,6 +1036,15 @@ export function Health() {
           const Icon = pickIcon(service.name);
           const minutesSince = effectiveMinutesSince(service);
           const freshness = freshnessPercent(minutesSince);
+          const workflowKey = inferWorkflowKey(service.name);
+          const trendSeed = workflowKey ? freshnessTimeline[workflowKey] ?? [] : [];
+          const trendNowIso = new Date().toISOString();
+          const trendPoints = trimFreshnessPoints(
+            [...trendSeed, { at: trendNowIso, value: freshness, minutesSince }],
+            trendNowIso
+          );
+          const trendPolyline = buildSparklinePolyline(trendPoints);
+          const staleSignal = staleSignalLabel(minutesSince, service.status);
 
           return (
             <Card
@@ -865,9 +1064,18 @@ export function Health() {
                   <div className="h-10 w-10 rounded-lg bg-background flex items-center justify-center border">
                     <Icon className="h-5 w-5 text-primary" />
                   </div>
-                  <Badge variant={statusBadgeVariant(service.status)} className="text-[9px] font-bold uppercase">
-                    {statusLabel(service.status)}
-                  </Badge>
+                  <div className="flex items-center gap-1.5">
+                    <Badge variant={statusBadgeVariant(service.status)} className="text-[9px] font-bold uppercase">
+                      {statusLabel(service.status)}
+                    </Badge>
+                    {staleSignal ? (
+                      <span
+                        className={`rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ${staleSignalClasses(staleSignal.tone)}`}
+                      >
+                        {staleSignal.label}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
 
                 <div>
@@ -883,6 +1091,25 @@ export function Health() {
                     <span>{minutesSince == null ? "-" : `${Math.round(freshness)}%`}</span>
                   </div>
                   <Progress value={freshness} className="h-1" />
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-[10px] font-bold">
+                    <span className="opacity-60 uppercase">60m Trend</span>
+                    <span className="opacity-60">{trendPoints.length} pts</span>
+                  </div>
+                  <div className="h-8 rounded-md border bg-background/60 px-1 py-1">
+                    <svg viewBox={`0 0 ${SPARKLINE_WIDTH} ${SPARKLINE_HEIGHT}`} className="h-full w-full" preserveAspectRatio="none">
+                      <polyline
+                        points={trendPolyline}
+                        fill="none"
+                        stroke="hsl(var(--primary))"
+                        strokeWidth={2}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </div>
                 </div>
 
                 {service.error ? <div className="text-[10px] text-status-warning leading-snug">{service.error}</div> : null}
@@ -955,7 +1182,7 @@ export function Health() {
                     {networkSnapshot.browser.online ? "Online" : "Offline"}
                   </div>
                   <div className="mt-1 text-[10px] text-muted-foreground">
-                    {networkSnapshot.browser.effectiveType ? `${networkSnapshot.browser.effectiveType.toUpperCase()} • ` : ""}
+                    {networkSnapshot.browser.effectiveType ? `${networkSnapshot.browser.effectiveType.toUpperCase()} | ` : ""}
                     {networkSnapshot.browser.downlinkMbps != null ? `${networkSnapshot.browser.downlinkMbps.toFixed(1)} Mbps` : "Downlink -"}
                   </div>
                 </div>
