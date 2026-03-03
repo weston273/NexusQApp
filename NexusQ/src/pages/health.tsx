@@ -52,6 +52,35 @@ const HEALTH_URLS = [
   "https://n8n-k7j4.onrender.com/webhook-test/health-status",
 ];
 
+const HEALTH_LOG_STORAGE_KEY = "nexusq-health-log-history-v1";
+const WORKFLOW_KEYS = ["A", "B", "C", "D"] as const;
+type WorkflowKey = (typeof WORKFLOW_KEYS)[number];
+
+function normalizeWorkflowName(key: WorkflowKey) {
+  return `Workflow ${key}`;
+}
+
+function inferWorkflowKey(serviceName: string): WorkflowKey | null {
+  const n = (serviceName || "").toLowerCase().trim();
+
+  if (n.startsWith("a") || n.includes("workflow a") || n.includes("intake") || n.includes("normal")) return "A";
+  if (n.startsWith("b") || n.includes("workflow b") || n.includes("speed") || n.includes("response")) return "B";
+  if (n.startsWith("c") || n.includes("workflow c") || n.includes("follow")) return "C";
+  if (n.startsWith("d") || n.includes("workflow d") || n.includes("pipeline") || n.includes("booking")) return "D";
+
+  return null;
+}
+
+function createFallbackService(key: WorkflowKey): HealthService {
+  return {
+    name: normalizeWorkflowName(key),
+    status: "unknown",
+    last_run_at: null,
+    minutes_since: null,
+    error: "No health signal received yet.",
+  };
+}
+
 function statusBadgeVariant(s: HealthService["status"]) {
   if (s === "optimal") return "outline";
   if (s === "stale") return "secondary";
@@ -169,7 +198,89 @@ function dedupeLogs(list: HealthLog[]) {
     return tb - ta;
   });
 
-  return out.slice(0, 30);
+  return out;
+}
+
+function buildWorkflowServices(list: HealthService[]) {
+  const byWorkflow = new Map<WorkflowKey, HealthService>();
+
+  for (const service of list) {
+    const workflowKey = inferWorkflowKey(service.name);
+    if (!workflowKey) continue;
+    const prev = byWorkflow.get(workflowKey);
+    if (!prev) {
+      byWorkflow.set(workflowKey, { ...service, name: normalizeWorkflowName(workflowKey) });
+      continue;
+    }
+    const prevTs = prev.last_run_at ? new Date(prev.last_run_at).getTime() : 0;
+    const nextTs = service.last_run_at ? new Date(service.last_run_at).getTime() : 0;
+    if (nextTs >= prevTs) {
+      byWorkflow.set(workflowKey, { ...service, name: normalizeWorkflowName(workflowKey) });
+    }
+  }
+
+  return WORKFLOW_KEYS.map((key) => byWorkflow.get(key) ?? createFallbackService(key));
+}
+
+function readStoredLogs() {
+  if (typeof window === "undefined") return [] as HealthLog[];
+  try {
+    const raw = localStorage.getItem(HEALTH_LOG_STORAGE_KEY);
+    if (!raw) return [] as HealthLog[];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [] as HealthLog[];
+    return dedupeLogs(parsed as HealthLog[]);
+  } catch {
+    return [] as HealthLog[];
+  }
+}
+
+function persistLogs(logs: HealthLog[]) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(HEALTH_LOG_STORAGE_KEY, JSON.stringify(logs));
+  } catch {
+    // Ignore storage failures (quota/private mode) and keep runtime state.
+  }
+}
+
+function buildStatusChangeLogs(previous: HealthService[], current: HealthService[]) {
+  const prevMap = new Map<WorkflowKey, HealthService>();
+  const currMap = new Map<WorkflowKey, HealthService>();
+
+  for (const service of previous) {
+    const key = inferWorkflowKey(service.name);
+    if (key) prevMap.set(key, service);
+  }
+  for (const service of current) {
+    const key = inferWorkflowKey(service.name);
+    if (key) currMap.set(key, service);
+  }
+
+  const events: HealthLog[] = [];
+  for (const key of WORKFLOW_KEYS) {
+    const before = prevMap.get(key);
+    const after = currMap.get(key);
+    if (!before || !after) continue;
+    if (before.status === after.status) continue;
+    events.push({
+      time: new Date().toISOString(),
+      source: normalizeWorkflowName(key),
+      event: `Status changed: ${statusLabel(before.status)} -> ${statusLabel(after.status)}`,
+      status: after.status === "degraded" || after.status === "stale" ? "warning" : "info",
+    });
+  }
+
+  return events;
+}
+
+function addSystemLog(message: string, status: HealthLog["status"] = "info"): HealthLog {
+  return {
+    time: new Date().toISOString(),
+    source: "Health UI",
+    event: message,
+    status,
+  };
 }
 
 export function Health() {
@@ -179,25 +290,42 @@ export function Health() {
   const [err, setErr] = React.useState<string | null>(null);
   const [lastRefreshAt, setLastRefreshAt] = React.useState<Date | null>(null);
   const [appSettings, setAppSettings] = React.useState(() => loadAppSettings());
+  const [logHistory, setLogHistory] = React.useState<HealthLog[]>(() => readStoredLogs());
+  const previousServicesRef = React.useRef<HealthService[]>([]);
+
+  const appendLogs = React.useCallback((entries: HealthLog[]) => {
+    if (!entries.length) return;
+    setLogHistory((prev) => {
+      const merged = dedupeLogs([...entries, ...prev]);
+      persistLogs(merged);
+      return merged;
+    });
+  }, []);
 
   const run = React.useCallback(async () => {
     setLoading(true);
     try {
       const data = await fetchHealthStatus();
+      const incomingServices = buildWorkflowServices(dedupeServices(data.services ?? []));
+      const remoteLogs = dedupeLogs(data.logs ?? []);
+      const statusChangeLogs = buildStatusChangeLogs(previousServicesRef.current, incomingServices);
+      appendLogs([...remoteLogs, ...statusChangeLogs, addSystemLog("Health refresh completed.", "success")]);
+
       setPayload({
         ...data,
-        services: dedupeServices(data.services ?? []),
-        logs: dedupeLogs(data.logs ?? []),
+        services: incomingServices,
+        logs: remoteLogs,
       });
+      previousServicesRef.current = incomingServices;
       setErr(null);
       setLastRefreshAt(new Date());
     } catch (e: any) {
       setErr(e?.message || "Failed to fetch health");
-      setPayload(null);
+      appendLogs([addSystemLog(`Health refresh failed: ${e?.message || "Unknown error"}`, "warning")]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [appendLogs]);
 
   React.useEffect(() => {
     const onSettingsChanged = () => setAppSettings(loadAppSettings());
@@ -227,8 +355,8 @@ export function Health() {
     };
   }, [appSettings.autoRefresh, appSettings.refreshIntervalSec, run]);
 
-  const services = payload?.services ?? [];
-  const logs = payload?.logs ?? [];
+  const services = payload?.services?.length ? payload.services : WORKFLOW_KEYS.map((key) => createFallbackService(key));
+  const logs = logHistory;
   const headlineOk = payload?.allOperational ?? false;
 
   if (loading && !payload) {
@@ -291,13 +419,6 @@ export function Health() {
       )}
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        {!services.length && (
-          <Card className="md:col-span-2 lg:col-span-4 border-dashed bg-muted/10">
-            <CardContent className="p-6 text-center text-sm text-muted-foreground">
-              No health service snapshots available yet.
-            </CardContent>
-          </Card>
-        )}
         {services.map((service) => {
           const Icon = pickIcon(service.name);
           const freshness = freshnessPercent(service.minutes_since);
@@ -351,10 +472,12 @@ export function Health() {
         <Card className="lg:col-span-2 border-none bg-muted/10">
           <CardHeader>
             <CardTitle className="text-lg">Real-time Activity Log</CardTitle>
-            <CardDescription>Event stream from Workflow E.</CardDescription>
+            <CardDescription>
+              Full retained event history from Workflow E and Health UI ({logs.length} entries).
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-0 font-mono text-xs">
+            <div className="space-y-0 font-mono text-xs max-h-[34rem] overflow-y-auto pr-1">
               {logs.map((log, i) => (
                 <div
                   key={`${log.time ?? "na"}-${log.source}-${i}`}
