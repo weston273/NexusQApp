@@ -19,10 +19,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { loadAppSettings, SETTINGS_CHANGED_EVENT, type AppSettings } from "@/lib/userSettings";
 import { withRetry } from "@/lib/network";
 import { PageHeader } from "@/components/ui/page-header";
+import { PageErrorState, PageLoadingState } from "@/components/ui/data-state";
 
 type HealthService = {
   name: string;
@@ -821,20 +821,7 @@ export function Health() {
   );
 
   if (loading && !payload && !serviceSnapshot.length) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <Skeleton className="h-8 w-48" />
-          <Skeleton className="h-9 w-56" />
-        </div>
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-          <Skeleton className="h-44 w-full rounded-xl" />
-          <Skeleton className="h-44 w-full rounded-xl" />
-          <Skeleton className="h-44 w-full rounded-xl" />
-          <Skeleton className="h-44 w-full rounded-xl" />
-        </div>
-      </div>
-    );
+    return <PageLoadingState title="Loading system health" description="Probing workflow endpoints and runtime diagnostics." cardCount={4} />;
   }
 
   return (
@@ -845,12 +832,12 @@ export function Health() {
           description="Operational status of Nexus Q automation layers (live from Workflow E)."
           lastUpdatedLabel={`Last updated: ${lastRefreshAt ? lastRefreshAt.toLocaleTimeString() : "Not yet synced"}`}
         />
-        <div className="flex items-center gap-2 justify-end flex-wrap">
-          <Button variant="outline" size="sm" className="gap-2" onClick={requestRefresh}>
+        <div className="flex items-center gap-2 justify-end flex-wrap sticky top-[4.25rem] z-20 rounded-lg border bg-background/90 p-2 backdrop-blur-sm md:static md:z-auto md:border-0 md:bg-transparent md:p-0 md:backdrop-blur-0">
+          <Button variant="outline" size="sm" className="gap-2 h-10" onClick={requestRefresh} aria-label="Refresh health data">
             <RefreshCcw className="h-4 w-4" />
             Refresh
           </Button>
-          <Button variant="outline" size="sm" className="gap-2" onClick={() => navigate("/settings")}>
+          <Button variant="outline" size="sm" className="gap-2 h-10" onClick={() => navigate("/settings")} aria-label="Open health settings">
             <Settings className="h-4 w-4" />
             Settings
           </Button>
@@ -889,13 +876,7 @@ export function Health() {
       </div>
 
       {err && (
-        <div className="rounded-xl border p-4 text-sm">
-          <div className="text-red-500 font-bold">Health API Error</div>
-          <div className="text-muted-foreground mt-1">{err}</div>
-          <button className="mt-3 underline text-sm" onClick={requestRefresh}>
-            Retry
-          </button>
-        </div>
+        <PageErrorState title="Health endpoint unavailable" message={err} onRetry={requestRefresh} />
       )}
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
@@ -968,7 +949,7 @@ export function Health() {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex-1 min-h-0">
-            <div className="space-y-0 font-mono text-xs h-full overflow-y-auto pr-1">
+            <div className="space-y-0 font-mono text-xs h-full overflow-y-auto pr-1" role="log" aria-live="polite" aria-label="Health activity log">
               {logs.map((log, i) => (
                 <div
                   key={`${log.time ?? "na"}-${log.source}-${i}`}
@@ -996,7 +977,19 @@ export function Health() {
                 </div>
               ))}
 
-              {!logs.length && <div className="text-sm text-muted-foreground">No logs yet.</div>}
+              {!logs.length && (
+                <div className="rounded-lg border border-dashed bg-background/40 p-4 text-sm text-muted-foreground">
+                  <div>No logs yet.</div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button size="sm" variant="outline" className="h-9" onClick={requestRefresh}>
+                      Refresh
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-9" onClick={() => navigate("/settings")}>
+                      Settings
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

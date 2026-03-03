@@ -53,15 +53,16 @@ export function Sidebar({
       <Button
         variant="ghost"
         size="icon"
-        className="fixed top-4 left-4 z-[90] lg:hidden"
+        className="fixed top-4 left-4 z-[110] lg:hidden"
         onClick={() => setIsOpen(!isOpen)}
+        aria-label={isOpen ? "Close navigation menu" : "Open navigation menu"}
       >
         {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
       </Button>
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-[80] w-64 border-r bg-sidebar-background transition-transform duration-300 lg:static lg:translate-x-0",
+          "fixed inset-y-0 left-0 z-[100] w-64 border-r bg-sidebar-background transition-transform duration-300 lg:static lg:z-auto lg:translate-x-0",
           !isOpen && "-translate-x-full"
         )}
       >
@@ -151,7 +152,7 @@ export function Sidebar({
       {/* Mobile Overlay */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-[70] bg-background/80 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-[95] bg-background/80 backdrop-blur-sm lg:hidden"
           onClick={() => setIsOpen(false)}
         />
       )}

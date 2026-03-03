@@ -21,6 +21,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { PageHeader } from "@/components/ui/page-header";
+import { ActionEmptyState } from "@/components/ui/data-state";
 import { AppSettings, loadAppSettings, saveAppSettings } from "@/lib/userSettings";
 import { getTelemetryEvents } from "@/lib/telemetry";
 
@@ -49,19 +51,16 @@ export function SettingsPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Configure operator preferences, notifications, and system behavior.
-          </p>
-        </div>
-
-        <Button size="sm" className="gap-2" onClick={saveSettings}>
-          <Save className="h-4 w-4" />
-          Save Changes
-        </Button>
-      </div>
+      <PageHeader
+        title="Settings"
+        description="Configure operator preferences, notifications, and system behavior."
+        actions={
+          <Button size="sm" className="h-10 gap-2" onClick={saveSettings}>
+            <Save className="h-4 w-4" />
+            Save Changes
+          </Button>
+        }
+      />
 
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="border-none bg-muted/20 lg:col-span-2">
@@ -123,7 +122,7 @@ export function SettingsPage() {
           <CardContent className="space-y-3">
             <Button
               variant={settings.theme === "light" ? "default" : "outline"}
-              className="w-full justify-start gap-2"
+              className="h-10 w-full justify-start gap-2"
               onClick={() => setSettings((prev) => ({ ...prev, theme: "light" }))}
             >
               <Sun className="h-4 w-4" />
@@ -131,7 +130,7 @@ export function SettingsPage() {
             </Button>
             <Button
               variant={settings.theme === "dark" ? "default" : "outline"}
-              className="w-full justify-start gap-2"
+              className="h-10 w-full justify-start gap-2"
               onClick={() => setSettings((prev) => ({ ...prev, theme: "dark" }))}
             >
               <Moon className="h-4 w-4" />
@@ -149,31 +148,34 @@ export function SettingsPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between rounded-lg border bg-background p-3">
-              <div className="flex items-center gap-2">
+              <Label htmlFor="auto-refresh" className="flex items-center gap-2 text-sm font-medium cursor-pointer">
                 <Globe className="h-4 w-4 text-primary" />
-                <span className="text-sm font-medium">Auto Refresh Data</span>
-              </div>
+                <span>Auto Refresh Data</span>
+              </Label>
               <Switch
+                id="auto-refresh"
                 checked={settings.autoRefresh}
                 onCheckedChange={(checked) => setSettings((prev) => ({ ...prev, autoRefresh: checked }))}
               />
             </div>
             <div className="flex items-center justify-between rounded-lg border bg-background p-3">
-              <div className="flex items-center gap-2">
+              <Label htmlFor="audit-trail" className="flex items-center gap-2 text-sm font-medium cursor-pointer">
                 <ShieldCheck className="h-4 w-4 text-primary" />
-                <span className="text-sm font-medium">Security Audit Trail</span>
-              </div>
+                <span>Security Audit Trail</span>
+              </Label>
               <Switch
+                id="audit-trail"
                 checked={settings.auditTrail}
                 onCheckedChange={(checked) => setSettings((prev) => ({ ...prev, auditTrail: checked }))}
               />
             </div>
             <div className="flex items-center justify-between rounded-lg border bg-background p-3">
-              <div className="flex items-center gap-2">
+              <Label htmlFor="push-notifications" className="flex items-center gap-2 text-sm font-medium cursor-pointer">
                 <Bell className="h-4 w-4 text-primary" />
-                <span className="text-sm font-medium">Push Notifications</span>
-              </div>
+                <span>Push Notifications</span>
+              </Label>
               <Switch
+                id="push-notifications"
                 checked={settings.pushNotifications}
                 onCheckedChange={(checked) => setSettings((prev) => ({ ...prev, pushNotifications: checked }))}
               />
@@ -251,7 +253,12 @@ export function SettingsPage() {
               </div>
             ))
           ) : (
-            <div className="text-sm text-muted-foreground">No diagnostics captured yet.</div>
+            <ActionEmptyState
+              title="No diagnostics captured yet"
+              description="Run normal app actions and save settings to populate this troubleshooting feed."
+              primaryActionLabel="Save Settings"
+              onPrimaryAction={saveSettings}
+            />
           )}
         </CardContent>
       </Card>

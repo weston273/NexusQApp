@@ -18,7 +18,11 @@ export function PageHeader({
         <p className="text-muted-foreground mt-1 text-sm">{description}</p>
         {lastUpdatedLabel ? <p className="text-[11px] text-muted-foreground mt-1">{lastUpdatedLabel}</p> : null}
       </div>
-      {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
+      {actions ? (
+        <div className="sticky top-[4.25rem] z-20 rounded-lg border bg-background/90 p-2 backdrop-blur-sm md:static md:z-auto md:border-0 md:bg-transparent md:p-0 md:backdrop-blur-0">
+          <div className="flex flex-wrap items-center gap-2 md:justify-end">{actions}</div>
+        </div>
+      ) : null}
     </div>
   );
 }

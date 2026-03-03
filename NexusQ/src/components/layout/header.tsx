@@ -27,12 +27,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -62,41 +57,79 @@ function eventLabel(eventType: string) {
   return (eventType || "unknown").replace(/_/g, " ");
 }
 
+function isTypingTarget(target: EventTarget | null) {
+  const node = target as HTMLElement | null;
+  if (!node) return false;
+  if (node.isContentEditable) return true;
+  const tag = node.tagName?.toLowerCase();
+  return tag === "input" || tag === "textarea" || tag === "select";
+}
+
 export function Header({
   onToggleSidebar,
 }: {
   onToggleSidebar: () => void;
 }) {
   const navigate = useNavigate();
-  const { leads, events } = useLeads();
+  const { leads, events, loading, error, lastLoadedAt } = useLeads();
   const [commandOpen, setCommandOpen] = React.useState(false);
   const [notificationsOpen, setNotificationsOpen] = React.useState(false);
+  const [clockTick, setClockTick] = React.useState(Date.now());
   const [lastReadAt, setLastReadAt] = React.useState<number>(() => {
     const raw = localStorage.getItem(LAST_NOTIFICATION_READ_KEY);
     const n = Number(raw);
     return Number.isFinite(n) ? n : 0;
   });
   const [settingsState, setSettingsState] = React.useState(() => loadAppSettings());
+  const goKeyAtRef = React.useRef<number>(0);
 
   React.useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setCommandOpen((open) => !open);
-      }
+    const navShortcuts: Record<string, string> = {
+      d: "/",
+      p: "/pipeline",
+      i: "/intake",
+      h: "/health",
+      s: "/settings",
     };
 
-    const onSettingsChanged = () => {
-      setSettingsState(loadAppSettings());
+    const onKeyDown = (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase();
+      if ((event.ctrlKey || event.metaKey) && key === "k") {
+        event.preventDefault();
+        setCommandOpen((open) => !open);
+        return;
+      }
+
+      if (isTypingTarget(event.target)) return;
+      if (event.altKey || event.ctrlKey || event.metaKey) return;
+
+      const now = Date.now();
+      if (key === "g") {
+        goKeyAtRef.current = now;
+        return;
+      }
+
+      if (now - goKeyAtRef.current > 1000) return;
+      const path = navShortcuts[key];
+      if (!path) return;
+      event.preventDefault();
+      navigate(path);
+      setCommandOpen(false);
+      goKeyAtRef.current = 0;
     };
+
+    const onSettingsChanged = () => setSettingsState(loadAppSettings());
+    const tickId = window.setInterval(() => setClockTick(Date.now()), 15000);
 
     document.addEventListener("keydown", onKeyDown);
     window.addEventListener(SETTINGS_CHANGED_EVENT, onSettingsChanged as EventListener);
+
     return () => {
       document.removeEventListener("keydown", onKeyDown);
       window.removeEventListener(SETTINGS_CHANGED_EVENT, onSettingsChanged as EventListener);
+      window.clearInterval(tickId);
     };
-  }, []);
+  }, [navigate]);
 
   React.useEffect(() => {
     if (!notificationsOpen) return;
@@ -104,6 +137,60 @@ export function Header({
     setLastReadAt(now);
     localStorage.setItem(LAST_NOTIFICATION_READ_KEY, String(now));
   }, [notificationsOpen]);
+
+  const trustMeta = React.useMemo(() => {
+    const source = "Supabase Realtime";
+    if (!lastLoadedAt) {
+      return {
+        source,
+        stateLabel: loading ? "Syncing" : "Awaiting Sync",
+        stateTone: loading ? "info" : "warning",
+        lastSyncLabel: "No successful sync yet",
+      };
+    }
+
+    const ageMs = Math.max(0, clockTick - lastLoadedAt.getTime());
+    const ageSec = Math.floor(ageMs / 1000);
+    const stale = ageSec >= 90;
+    const ageLabel =
+      ageSec < 60
+        ? `${ageSec}s ago`
+        : ageSec < 3600
+        ? `${Math.floor(ageSec / 60)}m ago`
+        : `${Math.floor(ageSec / 3600)}h ago`;
+
+    if (error) {
+      return {
+        source,
+        stateLabel: "Degraded",
+        stateTone: "error",
+        lastSyncLabel: `Last sync ${ageLabel}`,
+      };
+    }
+    if (loading) {
+      return {
+        source,
+        stateLabel: "Syncing",
+        stateTone: "info",
+        lastSyncLabel: `Last sync ${ageLabel}`,
+      };
+    }
+    return {
+      source,
+      stateLabel: stale ? "Stale" : "Healthy",
+      stateTone: stale ? "warning" : "success",
+      lastSyncLabel: `Last sync ${ageLabel}`,
+    };
+  }, [clockTick, error, lastLoadedAt, loading]);
+
+  const trustDotClass =
+    trustMeta.stateTone === "success"
+      ? "bg-status-success"
+      : trustMeta.stateTone === "warning"
+      ? "bg-status-warning"
+      : trustMeta.stateTone === "error"
+      ? "bg-status-error"
+      : "bg-status-info";
 
   const unreadCount = React.useMemo(() => {
     if (!settingsState.pushNotifications) return 0;
@@ -134,15 +221,13 @@ export function Header({
 
   return (
     <TooltipProvider>
-      <header
-        className="sticky top-0 z-40 w-full glass h-16 pl-14 md:px-6 px-4 flex items-center justify-between transition-all duration-300"
-      >
+      <header className="sticky top-0 z-40 w-full glass h-16 pl-14 md:px-6 px-4 flex items-center justify-between transition-all duration-300">
         <div className="flex items-center gap-2 md:gap-4 overflow-hidden flex-1 lg:flex-none">
           <Button
             variant="ghost"
             size="icon"
             onClick={onToggleSidebar}
-            className="hidden lg:inline-flex h-8 w-8"
+            className="hidden lg:inline-flex h-10 w-10"
             aria-label="Toggle sidebar"
           >
             <Menu className="h-4 w-4" />
@@ -151,9 +236,11 @@ export function Header({
 
           <div className="flex flex-col justify-center overflow-hidden">
             <h2 className="text-sm font-bold tracking-tight truncate">Operations</h2>
-            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-              <span className="status-dot status-dot-success shrink-0" />
-              <span className="uppercase tracking-widest font-semibold truncate hidden xs:block">System Active</span>
+            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground" aria-live="polite">
+              <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${trustDotClass}`} />
+              <span className="uppercase tracking-widest font-semibold truncate hidden xs:block">{trustMeta.stateLabel}</span>
+              <span className="hidden md:inline truncate">{trustMeta.source}</span>
+              <span className="hidden lg:inline truncate">{trustMeta.lastSyncLabel}</span>
             </div>
           </div>
 
@@ -174,7 +261,7 @@ export function Header({
               onFocus={() => setCommandOpen(true)}
               onClick={() => setCommandOpen(true)}
               placeholder="Search leads, pages, activity..."
-              className="pl-9 bg-muted/30 border-none focus-visible:ring-1 focus-visible:ring-primary h-9 transition-all cursor-pointer"
+              className="pl-9 bg-muted/30 border-none focus-visible:ring-1 focus-visible:ring-primary h-10 transition-all cursor-pointer"
               aria-label="Open global search"
             />
             <kbd className="absolute right-2.5 top-2.5 h-4 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground flex">
@@ -185,15 +272,15 @@ export function Header({
 
         <div className="flex items-center gap-1 md:gap-2 shrink-0">
           <div className="hidden xl:flex items-center gap-1">
-            <Button variant="ghost" size="sm" className="gap-1.5 text-xs" onClick={() => navigate("/intake")}>
+            <Button variant="ghost" size="sm" className="gap-1.5 text-xs h-10" onClick={() => navigate("/intake")}>
               <UserPlus className="h-3.5 w-3.5" />
               Add Lead
             </Button>
-            <Button variant="ghost" size="sm" className="gap-1.5 text-xs" onClick={() => navigate("/pipeline")}>
+            <Button variant="ghost" size="sm" className="gap-1.5 text-xs h-10" onClick={() => navigate("/pipeline")}>
               <BarChart3 className="h-3.5 w-3.5" />
               Pipeline
             </Button>
-            <Button variant="ghost" size="sm" className="gap-1.5 text-xs" onClick={() => navigate("/health")}>
+            <Button variant="ghost" size="sm" className="gap-1.5 text-xs h-10" onClick={() => navigate("/health")}>
               <Activity className="h-3.5 w-3.5" />
               Health
             </Button>
@@ -205,7 +292,7 @@ export function Header({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted/50 lg:hidden"
+                  className="h-10 w-10 text-muted-foreground hover:text-foreground hover:bg-muted/50 lg:hidden"
                   onClick={() => setCommandOpen(true)}
                   aria-label="Search"
                 >
@@ -222,7 +309,7 @@ export function Header({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted/50 hidden md:flex"
+                  className="h-10 w-10 text-muted-foreground hover:text-foreground hover:bg-muted/50 hidden md:flex"
                   onClick={() => navigate("/health")}
                   aria-label="System activity"
                 >
@@ -239,7 +326,7 @@ export function Header({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="relative h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                  className="relative h-10 w-10 text-muted-foreground hover:text-foreground hover:bg-muted/50"
                   onClick={() => setNotificationsOpen(true)}
                   aria-label="Notifications"
                 >
@@ -259,7 +346,7 @@ export function Header({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                  className="h-10 w-10 text-muted-foreground hover:text-foreground hover:bg-muted/50"
                   onClick={() => navigate("/settings")}
                   aria-label="Settings"
                 >
@@ -375,17 +462,15 @@ export function Header({
           <DialogHeader className="p-4 pb-2 border-b">
             <DialogTitle className="text-base flex items-center justify-between">
               Notifications
-              <Badge variant="outline" className="text-[10px]">{unreadCount} unread</Badge>
+              <Badge variant="outline" className="text-[10px]">
+                {unreadCount} unread
+              </Badge>
             </DialogTitle>
-            <DialogDescription className="text-xs">
-              Live activity updates from lead events and workflows.
-            </DialogDescription>
+            <DialogDescription className="text-xs">Live activity updates from lead events and workflows.</DialogDescription>
           </DialogHeader>
 
           {!settingsState.pushNotifications ? (
-            <div className="m-4 rounded-md border p-3 text-xs text-muted-foreground">
-              Push notifications are disabled in settings.
-            </div>
+            <div className="m-4 rounded-md border p-3 text-xs text-muted-foreground">Push notifications are disabled in settings.</div>
           ) : null}
 
           <div className="max-h-[calc(100vh-96px)] overflow-y-auto p-3 space-y-2">
@@ -415,9 +500,7 @@ export function Header({
                         {eventSeverity(event.event_type)}
                       </Badge>
                     </div>
-                    <div className="text-[10px] text-muted-foreground">
-                      {new Date(event.created_at).toLocaleTimeString()}
-                    </div>
+                    <div className="text-[10px] text-muted-foreground">{new Date(event.created_at).toLocaleTimeString()}</div>
                   </div>
                   <div className="mt-1 text-[11px] text-muted-foreground line-clamp-2">
                     {event.lead_id ? `Lead #${event.lead_id.slice(0, 8)}` : "System event"}
@@ -425,9 +508,7 @@ export function Header({
                 </button>
               ))
             ) : (
-              <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
-                No notifications yet.
-              </div>
+              <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">No notifications yet.</div>
             )}
           </div>
         </DialogContent>
@@ -435,3 +516,4 @@ export function Header({
     </TooltipProvider>
   );
 }
+

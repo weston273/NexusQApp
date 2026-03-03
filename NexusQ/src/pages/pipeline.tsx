@@ -31,10 +31,10 @@ import { MoreVertical, Plus, Zap, Filter, Settings, ChevronLeft, ChevronRight, G
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { PageHeader } from "@/components/ui/page-header";
+import { ActionEmptyState, PageErrorState, PageLoadingState } from "@/components/ui/data-state";
 
 import {
   Dialog,
@@ -168,11 +168,13 @@ function DraggableLeadCard({
   );
 }
 
-function DroppableColumn({ stageId, children }: { stageId: StageId; children: React.ReactNode }) {
+function DroppableColumn({ stageId, stageTitle, children }: { stageId: StageId; stageTitle: string; children: React.ReactNode }) {
   const { isOver, setNodeRef } = useDroppable({ id: stageId });
   return (
     <div
       ref={setNodeRef}
+      role="region"
+      aria-label={`${stageTitle} stage drop area`}
       className={cn(
         "space-y-3 rounded-xl p-1 transition-colors duration-150",
         isOver && "bg-primary/10 ring-1 ring-primary/30"
@@ -490,6 +492,10 @@ export function Pipeline() {
 
   const saveEdit = async () => {
     if (!activeLead) return;
+    const previousStage = activeLead.stage;
+    const previousValue = activeLead.valueNum;
+    const leadId = activeLead.id;
+    const leadName = activeLead.name;
 
     try {
       setSaving(true);
@@ -501,14 +507,27 @@ export function Pipeline() {
         value: valueNum,
       });
 
-      toast.success("Pipeline updated");
+      toast.success("Pipeline updated", {
+        action: {
+          label: "Undo",
+          onClick: async () => {
+            try {
+              await callWorkflowD({ lead_id: leadId, status: previousStage, value: previousValue });
+              toast.success("Update reverted");
+              await reload({ silent: true });
+            } catch (undoError: any) {
+              toast.error(undoError?.message || "Failed to undo update");
+            }
+          },
+        },
+      });
       setOpen(false);
-      await reload();
+      await reload({ silent: true });
 
       // realtime should refresh; but fallback:
       // reload();
     } catch (e: any) {
-      toast.error(e?.message || "Failed to update pipeline");
+      toast.error(e?.message || `Failed to update ${leadName}`);
     } finally {
       setSaving(false);
     }
@@ -651,28 +670,17 @@ export function Pipeline() {
   };
 
   if (loading) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <Skeleton className="h-8 w-56" />
-          <Skeleton className="h-9 w-52" />
-        </div>
-        <div className="grid gap-6 md:grid-cols-3">
-          <Skeleton className="h-56 w-full rounded-xl" />
-          <Skeleton className="h-56 w-full rounded-xl" />
-          <Skeleton className="h-56 w-full rounded-xl" />
-        </div>
-      </div>
-    );
+    return <PageLoadingState title="Loading pipeline board" description="Fetching stage distribution, values, and board state." />;
   }
   if (error)
     return (
-      <div className="p-6 space-y-3">
-        <div className="text-sm text-red-500">Failed to load: {error}</div>
-        <Button onClick={() => reload()} size="sm">
-          Retry
-        </Button>
-      </div>
+      <PageErrorState
+        title="Pipeline data unavailable"
+        message={error}
+        onRetry={() => {
+          void reload();
+        }}
+      />
     );
 
   return (
@@ -684,15 +692,22 @@ export function Pipeline() {
           lastUpdatedLabel={`Last updated: ${lastLoadedAt ? lastLoadedAt.toLocaleTimeString() : "Not yet synced"}`}
           actions={
             <>
-              <Button variant="outline" size="sm" className="h-9 gap-2" onClick={() => navigate("/settings")}>
+              <Button variant="outline" size="sm" className="h-10 gap-2" onClick={() => navigate("/settings")}>
                 <Settings className="h-4 w-4" />
                 Settings
               </Button>
-              <Button variant="outline" size="sm" className="h-9 gap-2" onClick={() => reload()}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-10 gap-2"
+                onClick={() => {
+                  void reload();
+                }}
+              >
                 <Filter className="h-4 w-4" />
                 Refresh
               </Button>
-              <Button size="sm" className="h-9 gap-2" onClick={() => navigate("/intake")}>
+              <Button size="sm" className="h-10 gap-2" onClick={() => navigate("/intake")}>
                 <Plus className="h-4 w-4" />
                 Add Lead
               </Button>
@@ -706,6 +721,19 @@ export function Pipeline() {
           <PipelineFlowChart data={pipelineFlowData} />
         </div>
 
+        {!uiLeads.length ? (
+          <ActionEmptyState
+            title="No leads in pipeline"
+            description="Create a lead to start workflow progression and stage analytics."
+            primaryActionLabel="Add Lead"
+            onPrimaryAction={() => navigate("/intake")}
+            secondaryActionLabel="Refresh Pipeline"
+            onSecondaryAction={() => {
+              void reload();
+            }}
+          />
+        ) : null}
+
         <DndContext
           sensors={sensors}
           onDragStart={handleDragStart}
@@ -713,10 +741,10 @@ export function Pipeline() {
           onDragEnd={handleDragEnd}
           onDragCancel={handleDragCancel}
         >
-          <ScrollArea className="w-full whitespace-nowrap rounded-md border-none">
+          <ScrollArea className="w-full whitespace-nowrap rounded-md border-none" aria-label="Pipeline stage board">
             <div className="flex w-max space-x-6 min-h-[600px]">
               {stages.map((stage) => (
-                <div key={stage.id} className="w-[85vw] sm:w-[300px] flex flex-col space-y-4">
+                <div key={stage.id} className="w-[85vw] sm:w-[300px] flex flex-col space-y-4" role="region" aria-label={`${stage.title} column`}>
                   <div className="flex items-center justify-between px-2">
                     <div className="flex items-center gap-2">
                       <div className={cn("h-2 w-2 rounded-full", stage.color)} />
@@ -733,12 +761,13 @@ export function Pipeline() {
                       size="icon"
                       className="h-8 w-8"
                       onClick={() => toast.info(`${stage.title} actions are available in the lead cards below.`)}
+                      aria-label={`${stage.title} column actions`}
                     >
                       <MoreVertical className="h-4 w-4 text-muted-foreground" />
                     </Button>
                   </div>
 
-                  <DroppableColumn stageId={stage.id}>
+                  <DroppableColumn stageId={stage.id} stageTitle={stage.title}>
                     {uiLeads
                       .filter((l) => l.stage === stage.id)
                       .map((lead) => (
@@ -797,7 +826,7 @@ export function Pipeline() {
               Edit the stage and quote/value for this lead. Saving will sync with the database.
               <br />
               <span className="text-xs text-muted-foreground">
-                If you still get “Missing client_key”, tough.
+                If credentials are missing, update backend connector configuration.
               </span>
             </DialogDescription>
           </DialogHeader>
@@ -805,8 +834,8 @@ export function Pipeline() {
           <div className="space-y-4">
             <div className="rounded-lg border bg-muted/20 p-3">
               <div className="text-xs text-muted-foreground">Lead</div>
-              <div className="font-bold">{activeLead?.name ?? "—"}</div>
-              <div className="text-[10px] text-muted-foreground">ID: {activeLead?.id ?? "—"}</div>
+              <div className="font-bold">{activeLead?.name ?? "-"}</div>
+              <div className="text-[10px] text-muted-foreground">ID: {activeLead?.id ?? "-"}</div>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
@@ -854,4 +883,5 @@ export function Pipeline() {
     </>
   );
 }
+
 

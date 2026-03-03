@@ -89,7 +89,7 @@ export function LeadIntake() {
     // preferredDate: '', // optional
     // notes: '', // optional
     name: '',
-    phone: '',   // kept for payload (we’ll set it to E.164 on submit)
+    phone: '',   // kept for payload (set to E.164 on submit)
     email: '', 
   });
 
@@ -215,7 +215,7 @@ export function LeadIntake() {
       // preferred_date: formData.preferredDate || null,
       // notes: formData.notes || null,
       name: formData.name,
-      phone: phoneE164,        // ✅ E.164 for Twilio + storage
+      phone: phoneE164,        // E.164 for Twilio + storage
       phone_raw: `${selectedCountry.dial} ${phoneDigits}`, // simple raw view
       email: formData.email || null,
       reference_id: ref,
@@ -471,7 +471,7 @@ export function LeadIntake() {
                   {errors.name && <p className="text-[11px] text-status-error">{errors.name}</p>}
                 </div>
 
-                {/* ✅ Country picker + strict-length phone input */}
+                {/* Country picker + strict-length phone input */}
                 <div className="space-y-3">
                   <Label className="font-bold text-xs uppercase tracking-wider">Phone Number</Label>
 
@@ -521,7 +521,7 @@ export function LeadIntake() {
                   </div>
 
                   <div className="text-[10px] text-muted-foreground">
-                    Output format: <span className="font-mono">{selectedCountry.dial}{phoneDigits || "…"}</span>
+                    Output format: <span className="font-mono">{selectedCountry.dial}{phoneDigits || "..."}</span>
                   </div>
 
                   {(phoneTooShort || phoneTooLong) && (
@@ -531,7 +531,7 @@ export function LeadIntake() {
                         ? `${selectedCountry.maxLen} digits`
                         : `${selectedCountry.minLen}-${selectedCountry.maxLen} digits`
                       }{" "}
-                      after {selectedCountry.dial}. (Don’t include the starting 0.)
+                      after {selectedCountry.dial}. (Do not include the starting 0.)
                     </div>
                   )}
                   {errors.phone && <p className="text-[11px] text-status-error">{errors.phone}</p>}

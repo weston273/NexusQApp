@@ -9,6 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { PageHeader } from "@/components/ui/page-header";
+import { ActionEmptyState, PageErrorState, PageLoadingState } from "@/components/ui/data-state";
 // import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import {
   AreaChart,
@@ -228,7 +230,11 @@ function PipelineSummaryFunnel({
 
       <CardContent className="grid gap-6 lg:grid-cols-[1.4fr_0.6fr] items-center">
         {/* chart */}
-        <div className="h-[260px] w-full rounded-xl border bg-muted/20 p-3">
+        <div
+          className="h-[260px] w-full rounded-xl border bg-muted/20 p-3"
+          role="img"
+          aria-label="Pipeline summary bar chart by stage"
+        >
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={cleanData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--muted-foreground) / 0.15)" />
@@ -272,7 +278,7 @@ function PipelineSummaryFunnel({
 
 function LeadTrendChart({ data }: { data: Array<{ day: string; leads: number }> }) {
   return (
-    <div className="h-[240px] w-full mt-4">
+    <div className="h-[240px] w-full mt-4" role="img" aria-label="Lead volume area chart for last seven days">
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
           <defs>
@@ -306,7 +312,7 @@ function LeadTrendChart({ data }: { data: Array<{ day: string; leads: number }> 
 
 function ConversionFunnel({ data }: { data: Array<{ stage: string; value: number }> }) {
   return (
-    <div className="h-[200px] w-full mt-4">
+    <div className="h-[200px] w-full mt-4" role="img" aria-label="Conversion funnel chart by stage">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--chart-grid))" opacity={0.6} />
@@ -329,7 +335,7 @@ function ConversionFunnel({ data }: { data: Array<{ stage: string; value: number
 
 function ResponseBarChart({ data }: { data: Array<{ period: string; time: number }> }) {
   return (
-    <div className="h-[200px] w-full mt-4">
+    <div className="h-[200px] w-full mt-4" role="img" aria-label="Average response speed comparison chart">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ top: 20, right: 20, left: -20, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--chart-grid))" opacity={0.6} />
@@ -355,7 +361,7 @@ function ActivityPieChart({ data }: { data: Array<{ name: string; value: number 
   const COLORS = ["hsl(var(--chart-1))", "hsl(var(--chart-5))", "hsl(var(--chart-7))"];
 
   return (
-    <div className="h-[200px] w-full mt-4">
+    <div className="h-[200px] w-full mt-4" role="img" aria-label="Interaction breakdown pie chart">
       <ResponsiveContainer width="100%" height="100%">
         <PieChart>
           <Pie data={data} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
@@ -617,53 +623,58 @@ export function Dashboard() {
     [avgResponseToday, conversion, events, leads, newPipelineCount, pipelineRows]
   );
 
-  if (loading) return <div className="p-6 text-sm text-muted-foreground">Loading…</div>;
+  if (loading) return <PageLoadingState title="Loading dashboard" description="Syncing pipeline, lead volume, and intelligence data." />;
   if (error)
     return (
-      <div className="p-6 space-y-3">
-        <div className="text-sm text-red-500">Failed to load: {error}</div>
-       <Button onClick={() => reload()} size="sm">
-          Retry
-        </Button>
-      </div>
+      <PageErrorState
+        title="Dashboard data unavailable"
+        message={error}
+        onRetry={() => {
+          void reload();
+        }}
+      />
     );
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold">Command Center</h1>
-          <p className="text-muted-foreground mt-1">Real-time revenue operations and system health.</p>
-          <p className="text-[11px] text-muted-foreground mt-1">
-            Last updated: {lastLoadedAt ? lastLoadedAt.toLocaleTimeString() : "Not yet synced"}
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => navigate("/settings")} className="gap-2">
-            <Settings className="h-3 w-3" />
-            Settings
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => navigate("/intake")} className="gap-2">
-            Add Lead <ArrowRight className="h-3 w-3" />
-          </Button>
-          <Button size="sm" onClick={() => reload()}>
-            Refresh
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Command Center"
+        description="Real-time revenue operations and system health."
+        lastUpdatedLabel={`Last updated: ${lastLoadedAt ? lastLoadedAt.toLocaleTimeString() : "Not yet synced"}`}
+        actions={
+          <>
+            <Button variant="outline" size="sm" onClick={() => navigate("/settings")} className="gap-2 h-10" aria-label="Open settings">
+              <Settings className="h-3.5 w-3.5" />
+              Settings
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => navigate("/intake")} className="gap-2 h-10" aria-label="Add a new lead">
+              Add Lead <ArrowRight className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              size="sm"
+              className="h-10"
+              onClick={() => {
+                void reload();
+              }}
+              aria-label="Refresh dashboard data"
+            >
+              Refresh
+            </Button>
+          </>
+        }
+      />
 
       {!leads.length && (
-        <Card className="border-dashed bg-muted/10">
-          <CardContent className="p-8 text-center space-y-3">
-            <h3 className="text-lg font-semibold">No leads yet</h3>
-            <p className="text-sm text-muted-foreground">
-              Add your first lead to unlock real-time trends, conversions, and automation insights.
-            </p>
-            <Button onClick={() => navigate("/intake")}>Add First Lead</Button>
-          </CardContent>
-        </Card>
+        <ActionEmptyState
+          title="No leads yet"
+          description="Add your first lead to unlock real-time trends, conversions, and automation insights."
+          primaryActionLabel="Add First Lead"
+          onPrimaryAction={() => navigate("/intake")}
+          secondaryActionLabel="Refresh Data"
+          onSecondaryAction={() => {
+            void reload();
+          }}
+        />
       )}
 
       {/* 1) Pipeline Summary FIRST */}
@@ -779,7 +790,26 @@ export function Dashboard() {
                   </div>
                 </div>
               ))}
-              {!recentActivity.length && <div className="text-sm text-muted-foreground">No activity yet.</div>}
+              {!recentActivity.length && (
+                <div className="rounded-lg border border-dashed bg-background/40 p-4 text-sm text-muted-foreground">
+                  <div>No activity yet.</div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button size="sm" variant="outline" className="h-9" onClick={() => navigate("/intake")}>
+                      Add Lead
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-9"
+                      onClick={() => {
+                        void reload();
+                      }}
+                    >
+                      Refresh
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
