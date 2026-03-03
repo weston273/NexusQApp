@@ -372,10 +372,13 @@ function ActivityPieChart({ data }: { data: Array<{ name: string; value: number 
           <Tooltip
             contentStyle={{
               backgroundColor: "hsl(var(--card))",
-              borderColor: "hsl(var(--border))",
+              border: "1px solid hsl(var(--border))",
               borderRadius: "8px",
               fontSize: "12px",
+              color: "hsl(var(--foreground))",
             }}
+            labelStyle={{ color: "hsl(var(--foreground))", fontWeight: 600 }}
+            itemStyle={{ color: "hsl(var(--foreground))" }}
           />
         </PieChart>
       </ResponsiveContainer>
