@@ -152,6 +152,25 @@ function freshnessPercent(minutesSince: number | null) {
   return clamp(100 - (minutesSince / 90) * 100, 0, 100);
 }
 
+function normalizeServiceSnapshot(service: HealthService): HealthService {
+  if (service.last_run_at || service.minutes_since == null) return service;
+  return {
+    ...service,
+    // Use reported minutes_since as a synthetic timestamp so freshness can decay over time.
+    last_run_at: new Date(Date.now() - service.minutes_since * 60_000).toISOString(),
+  };
+}
+
+function effectiveMinutesSince(service: HealthService) {
+  if (service.last_run_at) {
+    const ts = new Date(service.last_run_at).getTime();
+    if (Number.isFinite(ts) && ts > 0) {
+      return Math.max(0, Math.floor((Date.now() - ts) / 60_000));
+    }
+  }
+  return service.minutes_since;
+}
+
 function pickIcon(serviceName: string) {
   const n = (serviceName || "").toLowerCase().trim();
 
@@ -444,10 +463,18 @@ function dedupeLogs(list: HealthLog[]) {
   return out;
 }
 
-function buildWorkflowServices(list: HealthService[]) {
+function buildWorkflowServices(list: HealthService[], previous: HealthService[]) {
   const byWorkflow = new Map<WorkflowKey, HealthService>();
+  const previousByWorkflow = new Map<WorkflowKey, HealthService>();
 
-  for (const service of list) {
+  for (const service of previous) {
+    const key = inferWorkflowKey(service.name);
+    if (!key) continue;
+    previousByWorkflow.set(key, normalizeServiceSnapshot({ ...service, name: normalizeWorkflowName(key) }));
+  }
+
+  for (const rawService of list) {
+    const service = normalizeServiceSnapshot(rawService);
     const workflowKey = inferWorkflowKey(service.name);
     if (!workflowKey) continue;
     const prev = byWorkflow.get(workflowKey);
@@ -462,7 +489,7 @@ function buildWorkflowServices(list: HealthService[]) {
     }
   }
 
-  return WORKFLOW_KEYS.map((key) => byWorkflow.get(key) ?? createFallbackService(key));
+  return WORKFLOW_KEYS.map((key) => byWorkflow.get(key) ?? previousByWorkflow.get(key) ?? createFallbackService(key));
 }
 
 function readStoredLogs() {
@@ -570,7 +597,10 @@ export function Health() {
     setLoading(true);
     try {
       const result = await fetchHealthStatus();
-      const incomingServices = buildWorkflowServices(dedupeServices(result.payload.services ?? []));
+      const incomingServices = buildWorkflowServices(
+        dedupeServices(result.payload.services ?? []),
+        previousServicesRef.current
+      );
       const remoteLogs = dedupeLogs(result.payload.logs ?? []);
       const statusChangeLogs = buildStatusChangeLogs(previousServicesRef.current, incomingServices);
       const hasIncident = hasIncidentStatus(incomingServices);
@@ -814,7 +844,8 @@ export function Health() {
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         {services.map((service) => {
           const Icon = pickIcon(service.name);
-          const freshness = freshnessPercent(service.minutes_since);
+          const minutesSince = effectiveMinutesSince(service);
+          const freshness = freshnessPercent(minutesSince);
 
           return (
             <Card
@@ -842,14 +873,14 @@ export function Health() {
                 <div>
                   <div className="text-sm font-bold">{service.name}</div>
                   <div className="text-[10px] text-muted-foreground uppercase tracking-widest font-medium">
-                    Last run: {service.minutes_since == null ? "-" : `${service.minutes_since}m ago`}
+                    Last run: {minutesSince == null ? "-" : `${minutesSince}m ago`}
                   </div>
                 </div>
 
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between text-[10px] font-bold">
                     <span className="opacity-60 uppercase">Freshness</span>
-                    <span>{service.minutes_since == null ? "-" : `${Math.round(freshness)}%`}</span>
+                    <span>{minutesSince == null ? "-" : `${Math.round(freshness)}%`}</span>
                   </div>
                   <Progress value={freshness} className="h-1" />
                 </div>
