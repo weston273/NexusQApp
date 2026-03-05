@@ -73,7 +73,7 @@ export function LeadIntake() {
   const [recentAddresses, setRecentAddresses] = React.useState<string[]>([]);
 
   // Phone UI state (country + national digits)
-  const [countryCode, setCountryCode] = React.useState<string>('ZW');
+  const [countryCode, setCountryCode] = React.useState<string>('US');
   const selectedCountry = React.useMemo(
     () => phoneCountries.find(c => c.code === countryCode) ?? phoneCountries[0],
     [countryCode]
@@ -459,7 +459,7 @@ export function LeadIntake() {
                   <Label htmlFor="name" className="font-bold text-xs uppercase tracking-wider">Full Name</Label>
                   <Input
                     id="name"
-                    placeholder="Justina Amari"
+                    placeholder="John Smith"
                     className="h-12"
                     value={formData.name}
                     onChange={(e) => {
@@ -620,7 +620,7 @@ export function LeadIntake() {
                     email: '',
                   });
                   setReferenceId('');
-                  setCountryCode('ZW');
+                  setCountryCode('US');
                   setPhoneNational('');
                   setErrors({});
                   localStorage.removeItem(INTAKE_DRAFT_KEY);
