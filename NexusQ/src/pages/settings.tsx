@@ -23,8 +23,11 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { PageHeader } from "@/components/ui/page-header";
 import { ActionEmptyState } from "@/components/ui/data-state";
-import { AppSettings, loadAppSettings, saveAppSettings } from "@/lib/userSettings";
+import { loadAppSettings, saveAppSettings } from "@/lib/userSettings";
+import type { AppSettings } from "@/lib/userSettings";
 import { getTelemetryEvents } from "@/lib/telemetry";
+import { useAuth } from "@/context/AuthProvider";
+import { WorkspaceAccessKeys } from "@/pages/settings/WorkspaceAccessKeys";
 
 const navCards = [
   { label: "Dashboard", icon: LayoutDashboard, path: "/" },
@@ -36,6 +39,7 @@ const navCards = [
 
 export function SettingsPage() {
   const navigate = useNavigate();
+  const { clientId, role, loading, sessionReady, profileReady, accessReady, user, authError } = useAuth();
   const [settings, setSettings] = React.useState<AppSettings>(() => loadAppSettings());
   const [telemetry, setTelemetry] = React.useState(() => getTelemetryEvents().slice(0, 8));
 
@@ -235,6 +239,19 @@ export function SettingsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {clientId ? (
+        <WorkspaceAccessKeys
+          clientId={clientId}
+          role={role}
+          accessLoading={loading}
+          sessionReady={sessionReady}
+          profileReady={profileReady}
+          accessReady={accessReady}
+          userId={user?.id ?? null}
+          authError={authError}
+        />
+      ) : null}
 
       <Card className="border-none bg-muted/20">
         <CardHeader>

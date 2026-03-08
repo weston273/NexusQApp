@@ -5,6 +5,7 @@ import {
   Search,
   Activity,
   ChevronDown,
+  Check,
   User,
   Settings,
   LogOut,
@@ -43,6 +44,8 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useLeads } from "@/hooks/useLeads";
 import { loadAppSettings, SETTINGS_CHANGED_EVENT } from "@/lib/userSettings";
+import { useAuth } from "@/context/AuthProvider";
+import { getUserDisplayName } from "@/lib/auth";
 
 const LAST_NOTIFICATION_READ_KEY = "nexusq.notifications.lastReadAt";
 
@@ -71,6 +74,7 @@ export function Header({
   onToggleSidebar: () => void;
 }) {
   const navigate = useNavigate();
+  const { user, profile, role, clientId, accessRows, setActiveClientId, signOut } = useAuth();
   const { leads, events, loading, error, lastLoadedAt } = useLeads();
   const [commandOpen, setCommandOpen] = React.useState(false);
   const [notificationsOpen, setNotificationsOpen] = React.useState(false);
@@ -82,6 +86,16 @@ export function Header({
   });
   const [settingsState, setSettingsState] = React.useState(() => loadAppSettings());
   const goKeyAtRef = React.useRef<number>(0);
+
+  const displayName = profile?.full_name || settingsState.operatorName || getUserDisplayName(user);
+  const displayEmail = profile?.email || user?.email || settingsState.operatorEmail || "";
+  const displayRole = role || "viewer";
+  const initials = (displayName || "OP")
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((chunk) => chunk[0]?.toUpperCase() ?? "")
+    .join("");
 
   React.useEffect(() => {
     const navShortcuts: Record<string, string> = {
@@ -217,6 +231,12 @@ export function Header({
   const navigateAndClose = (path: string) => {
     navigate(path);
     setCommandOpen(false);
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/login", { replace: true });
+    toast.success("Signed out.");
   };
 
   return (
@@ -368,12 +388,14 @@ export function Header({
                 aria-label="User menu"
               >
                 <Avatar className="h-8 w-8 border border-border/50 ring-offset-background group-hover:ring-2 group-hover:ring-primary/20 transition-all">
-                  <AvatarImage src="" />
-                  <AvatarFallback className="text-[10px] font-bold bg-primary text-primary-foreground">OP</AvatarFallback>
+                  <AvatarImage src={profile?.avatar_url ?? ""} />
+                  <AvatarFallback className="text-[10px] font-bold bg-primary text-primary-foreground">
+                    {initials || "OP"}
+                  </AvatarFallback>
                 </Avatar>
                 <div className="hidden md:flex flex-col text-left overflow-hidden">
-                  <span className="text-xs font-semibold leading-none truncate max-w-[80px]">{settingsState.operatorName || "Operator"}</span>
-                  <span className="text-[10px] text-muted-foreground truncate max-w-[80px]">Admin</span>
+                  <span className="text-xs font-semibold leading-none truncate max-w-[80px]">{displayName || "Operator"}</span>
+                  <span className="text-[10px] text-muted-foreground truncate max-w-[80px] capitalize">{displayRole}</span>
                 </div>
                 <ChevronDown className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground transition-colors hidden md:block" />
               </button>
@@ -381,10 +403,29 @@ export function Header({
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuLabel>
                 <div className="flex flex-col">
-                  <span className="text-sm font-semibold">{settingsState.operatorName || "Operator Alpha"}</span>
-                  <span className="text-[10px] text-muted-foreground">{settingsState.operatorEmail || "operator@system.io"}</span>
+                  <span className="text-sm font-semibold">{displayName || "Operator"}</span>
+                  <span className="text-[10px] text-muted-foreground">{displayEmail || "No email"}</span>
                 </div>
               </DropdownMenuLabel>
+              {accessRows.length > 1 ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                    Workspace
+                  </DropdownMenuLabel>
+                  {accessRows.map((access) => (
+                    <DropdownMenuItem
+                      key={access.id}
+                      className="gap-2 cursor-pointer"
+                      onClick={() => setActiveClientId(access.client_id)}
+                    >
+                      {clientId === access.client_id ? <Check className="h-4 w-4" /> : <span className="h-4 w-4" />}
+                      <span className="truncate text-xs">{access.client_id.slice(0, 8)}</span>
+                      <span className="ml-auto text-[10px] uppercase text-muted-foreground">{access.role}</span>
+                    </DropdownMenuItem>
+                  ))}
+                </>
+              ) : null}
               <DropdownMenuSeparator />
               <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => navigate("/settings")}>
                 <User className="h-4 w-4" />
@@ -397,7 +438,9 @@ export function Header({
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 className="gap-2 cursor-pointer text-destructive focus:text-destructive"
-                onClick={() => toast.info("Sign out is not configured yet.")}
+                onClick={() => {
+                  void handleSignOut();
+                }}
               >
                 <LogOut className="h-4 w-4" />
                 <span>Sign Out</span>
@@ -516,4 +559,3 @@ export function Header({
     </TooltipProvider>
   );
 }
-

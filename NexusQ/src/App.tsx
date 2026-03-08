@@ -1,26 +1,30 @@
 import React from "react";
-// import { Routes, Route } from 'react-router-dom';
-import { Shell } from '@/components/layout/shell';
-import { SplashGate } from "@/components/splash/SplashGate";
-// import { Dashboard } from '@/pages/dashboard';
-// import { Pipeline } from '@/pages/pipeline';
-// import { LeadIntake } from '@/pages/intake';
-// import { Health } from '@/pages/health';
-import { Toaster } from '@/components/ui/sonner';
+import { Route, Routes } from "react-router-dom";
+import { Shell } from "@/components/layout/shell";
+import { Toaster } from "@/components/ui/sonner";
 import AnimatedRoutes from "@/components/layout/AnimatedRoutes";
 import RouteProgress from "@/components/layout/RouteProgress";
 import { AppErrorBoundary } from "@/components/layout/AppErrorBoundary";
 import { trackTelemetry } from "@/lib/telemetry";
+import { AuthProvider } from "@/context/AuthProvider";
+import { AuthGuard } from "@/components/auth/AuthGuard";
+import { ProtectedRoute, PublicOnlyRoute } from "@/components/auth/ProtectedRoute";
+import { LoginPage } from "@/pages/login";
+import { SignupPage } from "@/pages/signup";
+import { ForgotPasswordPage } from "@/pages/forgot-password";
+import { LinkWorkspacePage } from "@/pages/link-workspace";
+import { AuthCallbackPage } from "@/pages/auth-callback";
+import { ResetPasswordPage } from "@/pages/reset-password";
 
-
-import { useLeads } from '@/hooks/useLeads';
-
-
+function AppShell() {
+  return (
+    <Shell>
+      <AnimatedRoutes />
+    </Shell>
+  );
+}
 
 function App() {
-
-  const { loading, error, reload } = useLeads();
-
   React.useEffect(() => {
     const onError = (event: ErrorEvent) => {
       trackTelemetry({ type: "error", message: event.message, meta: { source: "window.error" } });
@@ -37,23 +41,56 @@ function App() {
   }, []);
 
   return (
-    <>
+    <AuthProvider>
       <AppErrorBoundary>
-        <SplashGate
-          ready={!loading && !error}
-          error={error}
-          onRetry={() => {
-            void reload();
-          }}
-        >
-          <RouteProgress />
-          <Shell>
-            <AnimatedRoutes />
-          </Shell>
-        </SplashGate>
+        <RouteProgress />
+        <Routes>
+          <Route
+            path="/login"
+            element={
+              <PublicOnlyRoute>
+                <LoginPage />
+              </PublicOnlyRoute>
+            }
+          />
+          <Route
+            path="/signup"
+            element={
+              <PublicOnlyRoute>
+                <SignupPage />
+              </PublicOnlyRoute>
+            }
+          />
+          <Route
+            path="/forgot-password"
+            element={
+              <PublicOnlyRoute>
+                <ForgotPasswordPage />
+              </PublicOnlyRoute>
+            }
+          />
+          <Route path="/auth/callback" element={<AuthCallbackPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route
+            path="/link-workspace"
+            element={
+              <ProtectedRoute requireLinkedClient={false}>
+                <LinkWorkspacePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/*"
+            element={
+              <AuthGuard>
+                <AppShell />
+              </AuthGuard>
+            }
+          />
+        </Routes>
       </AppErrorBoundary>
       <Toaster />
-    </>
+    </AuthProvider>
   );
 }
 

@@ -1,0 +1,214 @@
+import type { PostgrestError } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase";
+
+export type AccessRole = "owner" | "admin" | "viewer";
+
+export type UserProfile = {
+  id: string;
+  email: string | null;
+  full_name: string | null;
+  phone: string | null;
+  whatsapp: string | null;
+  avatar_url: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type UserAccessRow = {
+  id: string;
+  user_id: string;
+  client_id: string;
+  role: AccessRole;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ClientAccessKeyRow = {
+  id: string;
+  client_id: string;
+  label: string | null;
+  role: AccessRole;
+  is_active: boolean;
+  expires_at: string | null;
+  created_by: string | null;
+  created_at: string;
+};
+
+export type ClaimClientAccessResult = {
+  client_id: string;
+  role: AccessRole;
+};
+
+const ACTIVE_CLIENT_STORAGE_KEY = "nexusq.active-client-id";
+
+function roleWeight(role: AccessRole) {
+  if (role === "owner") return 3;
+  if (role === "admin") return 2;
+  return 1;
+}
+
+export function isAccessAdminRole(role: AccessRole | null | undefined) {
+  return role === "owner" || role === "admin";
+}
+
+export function getStoredActiveClientId() {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(ACTIVE_CLIENT_STORAGE_KEY);
+}
+
+export function setStoredActiveClientId(clientId: string | null) {
+  if (typeof window === "undefined") return;
+  if (clientId) {
+    localStorage.setItem(ACTIVE_CLIENT_STORAGE_KEY, clientId);
+    return;
+  }
+  localStorage.removeItem(ACTIVE_CLIENT_STORAGE_KEY);
+}
+
+export function pickPrimaryAccessRow(rows: UserAccessRow[], preferredClientId?: string | null) {
+  const activeRows = rows.filter((row) => row.is_active);
+  if (!activeRows.length) return null;
+
+  if (preferredClientId) {
+    const matching = activeRows.find((row) => row.client_id === preferredClientId);
+    if (matching) return matching;
+  }
+
+  return [...activeRows].sort((a, b) => {
+    const roleDiff = roleWeight(b.role) - roleWeight(a.role);
+    if (roleDiff !== 0) return roleDiff;
+    return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+  })[0];
+}
+
+export async function fetchCurrentUserProfile(userId: string) {
+  return supabase
+    .from("user_profiles")
+    .select("id, email, full_name, phone, whatsapp, avatar_url, created_at, updated_at")
+    .eq("id", userId)
+    .maybeSingle<UserProfile>();
+}
+
+export async function fetchCurrentUserAccessRows(userId: string) {
+  return supabase
+    .from("user_access")
+    .select("id, user_id, client_id, role, is_active, created_at, updated_at")
+    .eq("user_id", userId)
+    .eq("is_active", true)
+    .order("created_at", { ascending: true })
+    .returns<UserAccessRow[]>();
+}
+
+export function parseAccessError(error: PostgrestError | Error | null | undefined) {
+  if (!error) return "An unexpected error occurred.";
+  const message = "message" in error ? String(error.message) : String(error);
+  const lower = message.toLowerCase();
+  if (lower.includes("invalid access key") || lower.includes("invalid key")) {
+    return "Invalid access key. Check the value and try again.";
+  }
+  if (lower.includes("expired")) return "This access key has expired.";
+  if (lower.includes("inactive") || lower.includes("disabled")) return "This access key is inactive.";
+  if (lower.includes("already linked") || lower.includes("already has access")) {
+    return "Your account is already linked to this workspace.";
+  }
+  if (lower.includes("permission") || lower.includes("not have access")) {
+    return "You do not have permission to perform this action.";
+  }
+  return message;
+}
+
+export function normalizeAccessKey(value: string) {
+  return value.trim().toUpperCase();
+}
+
+async function parseFunctionError(error: unknown) {
+  if (!error) return "An unexpected error occurred.";
+
+  const functionError = error as { context?: Response; message?: string };
+  if (functionError.context instanceof Response) {
+    try {
+      const payload = await functionError.context.json();
+      const bodyMessage = payload?.error || payload?.message;
+      if (typeof bodyMessage === "string" && bodyMessage.trim()) {
+        return bodyMessage;
+      }
+    } catch {
+      // Ignore JSON parsing issues and use fallback message.
+    }
+  }
+
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+export async function claimWorkspaceAccess(rawKey: string): Promise<ClaimClientAccessResult> {
+  const normalized = normalizeAccessKey(rawKey);
+  if (!normalized) {
+    throw new Error("Access key is required.");
+  }
+
+  const { data, error } = await supabase.rpc("claim_client_access", { raw_key: normalized });
+  if (error) throw new Error(parseAccessError(error));
+
+  const record = (Array.isArray(data) ? data[0] : data) as ClaimClientAccessResult | null;
+  if (!record?.client_id || !record?.role) {
+    throw new Error("Access key was accepted, but no client link was returned.");
+  }
+  return record;
+}
+
+export async function listClientAccessKeys(clientId: string) {
+  return supabase
+    .from("client_access_keys")
+    .select("id, client_id, label, role, is_active, expires_at, created_by, created_at")
+    .eq("client_id", clientId)
+    .order("created_at", { ascending: false })
+    .returns<ClientAccessKeyRow[]>();
+}
+
+export async function createClientAccessKey(params: {
+  clientId: string;
+  label?: string;
+  role: AccessRole;
+  isActive: boolean;
+  expiresAt?: string | null;
+  confirmOwnerKey?: boolean;
+}) {
+  const { data, error } = await supabase.functions.invoke("create-access-key", {
+    body: {
+      client_id: params.clientId,
+      label: params.label?.trim() || null,
+      role: params.role,
+      is_active: params.isActive,
+      expires_at: params.expiresAt ?? null,
+      confirm_owner_key: params.confirmOwnerKey ?? false,
+    },
+  });
+
+  if (error) throw new Error(await parseFunctionError(error));
+
+  const payload = data as { raw_key?: string; key?: ClientAccessKeyRow };
+  if (!payload?.raw_key || !payload?.key) {
+    throw new Error("Access key creation did not return a valid response.");
+  }
+
+  return { rawKey: payload.raw_key, record: payload.key };
+}
+
+export async function setClientAccessKeyActive(keyId: string, isActive: boolean) {
+  const { data, error } = await supabase.functions.invoke("revoke-access-key", {
+    body: {
+      key_id: keyId,
+      is_active: isActive,
+    },
+  });
+
+  if (error) throw new Error(await parseFunctionError(error));
+
+  const payload = data as { key?: ClientAccessKeyRow };
+  if (!payload?.key) {
+    throw new Error("Access key update did not return a valid response.");
+  }
+  return payload.key;
+}

@@ -14,6 +14,7 @@ import {
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import Logo from '@/assets/logo/nexus-q-logo.png';
+import { useAuth } from '@/context/AuthProvider';
 
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
@@ -29,7 +30,15 @@ export function Sidebar({
   isOpen: boolean;
   setIsOpen: React.Dispatch<React.SetStateAction<boolean>>;
 }) {
+  const { profile, user, role } = useAuth();
   const [theme, setTheme] = React.useState<'light' | 'dark'>('light');
+  const displayName = profile?.full_name || user?.email || "Operator";
+  const initials = displayName
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
 
   // Load saved theme
   React.useEffect(() => {
@@ -137,12 +146,12 @@ export function Sidebar({
           {/* Operator */}
           <div className="flex items-center gap-3 px-3 py-2">
             <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold">
-              OP
+              {initials || "OP"}
             </div>
             <div className="flex flex-col">
-              <span className="text-xs font-semibold">Operator</span>
+              <span className="text-xs font-semibold truncate max-w-[120px]">{displayName}</span>
               <span className="text-[10px] text-muted-foreground">
-                Nexus Q v1.0
+                {(role || "viewer").toUpperCase()}
               </span>
             </div>
           </div>
