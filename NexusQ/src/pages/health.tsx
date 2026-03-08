@@ -363,6 +363,76 @@ class HealthFetchError extends Error {
   }
 }
 
+function buildFallbackHealthPayloadFromEmptyBody(): HealthPayload {
+  const now = new Date().toISOString();
+  return {
+    ok: true,
+    allOperational: false,
+    services: [],
+    logs: [
+      {
+        time: now,
+        source: "Health Endpoint",
+        event: "Endpoint returned an empty body. Using cached workflow snapshot.",
+        status: "warning",
+      },
+    ],
+    generated_at: now,
+  };
+}
+
+function toHealthPayloadFromUnknown(input: any): HealthPayload {
+  return {
+    ok: Boolean(input?.ok),
+    allOperational: Boolean(input?.allOperational),
+    services: Array.isArray(input?.services) ? input.services : [],
+    logs: Array.isArray(input?.logs) ? input.logs : [],
+    generated_at: input?.generated_at || new Date().toISOString(),
+  };
+}
+
+async function parseHealthPayloadResponse(response: Response): Promise<HealthPayload> {
+  const contentType = (response.headers.get("content-type") || "").toLowerCase();
+  const rawText = await response.text();
+  const trimmed = rawText.trim();
+
+  if (!trimmed) {
+    return buildFallbackHealthPayloadFromEmptyBody();
+  }
+
+  const shouldParseJson =
+    contentType.includes("application/json") || trimmed.startsWith("{") || trimmed.startsWith("[");
+
+  if (shouldParseJson) {
+    try {
+      return toHealthPayloadFromUnknown(JSON.parse(trimmed));
+    } catch (error: any) {
+      throw new Error(`Invalid JSON payload: ${error?.message || "parse failed"}`);
+    }
+  }
+
+  const lower = trimmed.toLowerCase();
+  if (lower.includes("ok") || lower.includes("healthy")) {
+    const now = new Date().toISOString();
+    return {
+      ok: true,
+      allOperational: false,
+      services: [],
+      logs: [
+        {
+          time: now,
+          source: "Health Endpoint",
+          event: `Text response received: ${trimmed.slice(0, 120)}`,
+          status: "info",
+        },
+      ],
+      generated_at: now,
+    };
+  }
+
+  throw new Error(`Unexpected response format (content-type: ${contentType || "unknown"})`);
+}
+
 async function fetchWithTimeout(url: string, ms = 12000) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), ms);
@@ -429,8 +499,17 @@ async function fetchHealthStatus(): Promise<FetchHealthStatusResult> {
     throw new HealthFetchError(`Health endpoint unreachable. ${reasons.join(" | ")}`, probes.map((entry) => entry.probe));
   }
 
-  const data = (await okResult.response.json()) as HealthPayload;
-  if (!data?.ok) {
+  let data: HealthPayload;
+  try {
+    data = await parseHealthPayloadResponse(okResult.response);
+  } catch (error: any) {
+    throw new HealthFetchError(
+      `Health endpoint payload unreadable (${hostFromUrl(okResult.probe.url)}). ${error?.message || "Invalid response format."}`,
+      probes.map((entry) => entry.probe)
+    );
+  }
+
+  if (!data.ok) {
     throw new HealthFetchError("Health endpoint returned ok=false", probes.map((entry) => entry.probe));
   }
 

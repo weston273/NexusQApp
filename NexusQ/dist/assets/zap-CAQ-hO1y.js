@@ -1,1 +1,0 @@
-import{c as o}from"./index-CZECVR21.js";const a=[["path",{d:"m15 18-6-6 6-6",key:"1wnfg3"}]],t=o("chevron-left",a);const e=[["path",{d:"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z",key:"1xq2db"}]],n=o("zap",e);export{t as C,n as Z};
