@@ -231,8 +231,18 @@ class LeadsStore {
       { data: eventData, error: eventErr },
       { data: pipeData, error: pipeErr },
     ] = await Promise.all([
-      supabase.from("leads").select("*").eq("client_id", clientId).order("created_at", { ascending: false }).limit(200),
-      supabase.from("lead_events").select("*").eq("client_id", clientId).order("created_at", { ascending: false }).limit(50),
+      supabase
+        .from("leads")
+        .select("id, client_id, name, phone, email, source, status, score, created_at, last_contacted_at, service, urgency, address")
+        .eq("client_id", clientId)
+        .order("created_at", { ascending: false })
+        .limit(200),
+      supabase
+        .from("lead_events")
+        .select("id, client_id, lead_id, event_type, payload_json, created_at")
+        .eq("client_id", clientId)
+        .order("created_at", { ascending: false })
+        .limit(50),
       supabase
         .from("pipeline")
         .select("id, client_id, lead_id, stage, value, probability, updated_at")
@@ -241,11 +251,20 @@ class LeadsStore {
     ]);
 
     const firstErr = leadErr ?? eventErr ?? pipeErr;
+    if (firstErr) {
+      this.setSnapshot({
+        error: firstErr.message,
+        loading: false,
+        clientId,
+      });
+      return;
+    }
+
     this.setSnapshot({
       leads: (leadData ?? []) as Lead[],
       events: (eventData ?? []) as LeadEvent[],
       pipelineRows: (pipeData ?? []) as PipelineRow[],
-      error: firstErr ? firstErr.message : null,
+      error: null,
       loading: false,
       lastLoadedAt: new Date(),
       clientId,

@@ -41,6 +41,14 @@ function getAuthClient(request: Request) {
   });
 }
 
+function extractBearerToken(request: Request) {
+  const authHeader = request.headers.get("Authorization");
+  if (!authHeader) return null;
+  const match = authHeader.match(/^Bearer\s+(.+)$/i);
+  if (!match?.[1]) return null;
+  return match[1].trim();
+}
+
 function getServiceClient() {
   const supabaseUrl = getEnv("SUPABASE_URL");
   const serviceRoleKey = getEnv("SUPABASE_SERVICE_ROLE_KEY");
@@ -50,12 +58,15 @@ function getServiceClient() {
 }
 
 async function requireAuthenticatedUser(request: Request): Promise<User> {
+  const token = extractBearerToken(request);
+  if (!token) throw new Error("Missing Authorization header.");
+
   const authClient = getAuthClient(request);
   if (!authClient) throw new Error("Missing Authorization header.");
 
-  const { data, error } = await authClient.auth.getUser();
+  const { data, error } = await authClient.auth.getUser(token);
   if (error || !data.user) {
-    throw new Error("Unauthorized request.");
+    throw new Error(error?.message || "Unauthorized request.");
   }
   return data.user;
 }

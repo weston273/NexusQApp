@@ -1,6 +1,6 @@
 # NexusQ Access Key Edge Functions
 
-This folder contains secure server-side creation and revocation logic for workspace access keys.
+This folder contains secure server-side logic for workspace access keys, onboarding bootstrap, and secure workflow proxying.
 
 ## Key normalization rule
 
@@ -27,6 +27,26 @@ Frontend claim flow uses the same normalization rule before calling `public.clai
   - Enforces owner-only changes for owner-level keys.
   - Toggles `is_active`.
 
+- `workspace-bootstrap`
+  - Verifies caller auth token.
+  - `create_workspace` action:
+    - Calls SQL function `public.bootstrap_workspace_for_user(...)`.
+    - Ensures `user_profiles` exists.
+    - Creates a `clients` row.
+    - Creates owner membership in `user_access`.
+    - Optionally creates initial `client_access_keys` row (returns raw key once).
+  - `join_workspace` action:
+    - Calls SQL function `public.join_workspace_with_access_key(...)`.
+    - Validates hashed key server-side.
+    - Upserts membership in `user_access`.
+
+- `workflow-d-proxy`
+  - Verifies caller auth token.
+  - Resolves lead context and verifies caller has active `user_access` to the lead client.
+  - Injects `x-nexusq-secret` server-side and forwards request to Workflow D.
+  - Verifies that `pipeline.stage` and `leads.status` actually persisted before returning success.
+  - Returns normalized JSON to frontend.
+
 ## Required Function Secrets
 
 Set in Supabase project secrets:
@@ -34,12 +54,16 @@ Set in Supabase project secrets:
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
+- `WORKFLOW_D_URL` (for `workflow-d-proxy`)
+- `NEXUSQ_PIPELINE_SECRET` (for `workflow-d-proxy`)
 
 ## Deploy
 
 ```bash
 supabase functions deploy create-access-key
 supabase functions deploy revoke-access-key
+supabase functions deploy workspace-bootstrap
+supabase functions deploy workflow-d-proxy
 ```
 
 If running locally:

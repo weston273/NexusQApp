@@ -1,1 +1,9 @@
 node_modules
+
+# Local tooling and audit artifacts
+.tmp_audit/
+tools/
+NexusQ/supabase/.temp/
+
+# Local env
+NexusQ/.env.local

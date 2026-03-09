@@ -427,6 +427,10 @@ export function Header({
                 </>
               ) : null}
               <DropdownMenuSeparator />
+              <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => navigate("/link-workspace?mode=join")}>
+                <UserPlus className="h-4 w-4" />
+                <span>Join Workspace</span>
+              </DropdownMenuItem>
               <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => navigate("/settings")}>
                 <User className="h-4 w-4" />
                 <span>Profile Settings</span>

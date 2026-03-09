@@ -23,6 +23,8 @@ import { loadAppSettings, SETTINGS_CHANGED_EVENT, type AppSettings } from "@/lib
 import { withRetry } from "@/lib/network";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageErrorState, PageLoadingState } from "@/components/ui/data-state";
+import { useAuth } from "@/context/AuthProvider";
+import { supabase } from "@/lib/supabase";
 
 type HealthService = {
   name: string;
@@ -84,16 +86,42 @@ type SecuritySnapshot = {
   checkedAt: string;
 };
 
+type AutomationHealthRow = {
+  workflow_name: string | null;
+  last_run_at: string | null;
+  status: string | null;
+  error_message: string | null;
+};
+
 type FetchHealthStatusResult = {
   payload: HealthPayload;
   endpointProbes: EndpointProbe[];
   activeEndpointUrl: string | null;
 };
 
-const HEALTH_URLS = [
-  "https://n8n-k7j4.onrender.com/webhook/health-status",
-  "https://n8n-k7j4.onrender.com/webhook-test/health-status",
-];
+const DEFAULT_WORKFLOW_E_STATUS_URL = "https://n8n-k7j4.onrender.com/webhook/health-status";
+
+function readViteEnv(key: string) {
+  const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env;
+  const value = env?.[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function uniqueNonEmpty(values: Array<string | null | undefined>) {
+  const out: string[] = [];
+  for (const value of values) {
+    const trimmed = String(value ?? "").trim();
+    if (!trimmed) continue;
+    if (!out.includes(trimmed)) out.push(trimmed);
+  }
+  return out;
+}
+
+const HEALTH_URLS = uniqueNonEmpty([
+  readViteEnv("VITE_WORKFLOW_E_STATUS_URL"),
+  readViteEnv("VITE_WORKFLOW_E_STATUS_FALLBACK_URL"),
+  DEFAULT_WORKFLOW_E_STATUS_URL,
+]);
 
 const NOMINAL_REFRESH_SEC = 45;
 const INCIDENT_REFRESH_SEC = 15;
@@ -149,6 +177,24 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
+function parseTimestampMs(value: string | null | undefined) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+
+  const direct = Date.parse(raw);
+  if (Number.isFinite(direct)) return direct;
+
+  // Handle common Postgres timestamptz text: "YYYY-MM-DD HH:mm:ss.sss+00"
+  let normalized = raw.replace(" ", "T");
+  normalized = normalized.replace(/([+-]\d{2})$/, "$1:00");
+  normalized = normalized.replace(/\+00:00$/, "Z");
+
+  const normalizedMs = Date.parse(normalized);
+  if (Number.isFinite(normalizedMs)) return normalizedMs;
+
+  return null;
+}
+
 function freshnessPercent(minutesSince: number | null) {
   if (minutesSince == null) return 0;
   return clamp(100 - (minutesSince / 90) * 100, 0, 100);
@@ -165,8 +211,8 @@ function normalizeServiceSnapshot(service: HealthService): HealthService {
 
 function effectiveMinutesSince(service: HealthService) {
   if (service.last_run_at) {
-    const ts = new Date(service.last_run_at).getTime();
-    if (Number.isFinite(ts) && ts > 0) {
+    const ts = parseTimestampMs(service.last_run_at);
+    if (ts != null && ts > 0) {
       return Math.max(0, Math.floor((Date.now() - ts) / 60_000));
     }
   }
@@ -263,6 +309,19 @@ function hostFromUrl(url: string) {
   } catch {
     return url;
   }
+}
+
+function endpointDisplayName(label: string) {
+  if (label === "Primary Endpoint") return "NexusQ Servers";
+  if (label.startsWith("Fallback Endpoint")) return "NexusQ Backup Route";
+  return "NexusQ Servers";
+}
+
+function activeRouteDisplayName(snapshot: NetworkSnapshot) {
+  if (!snapshot.activeEndpointUrl) return "No active endpoint";
+  const match = snapshot.endpoints.find((endpoint) => endpoint.url === snapshot.activeEndpointUrl);
+  if (match) return endpointDisplayName(match.label);
+  return "NexusQ Servers";
 }
 
 function hasIncidentStatus(services: HealthService[]) {
@@ -381,13 +440,97 @@ function buildFallbackHealthPayloadFromEmptyBody(): HealthPayload {
   };
 }
 
+function normalizeHealthServiceStatus(value: unknown): HealthService["status"] {
+  const lower = String(value ?? "").toLowerCase().trim();
+  if (lower === "optimal" || lower === "ok" || lower === "healthy" || lower === "success") return "optimal";
+  if (lower === "stale" || lower === "delayed") return "stale";
+  if (lower === "degraded" || lower === "error" || lower === "failed" || lower === "fail") return "degraded";
+  return "unknown";
+}
+
+function normalizeHealthLogStatus(value: unknown): HealthLog["status"] {
+  const lower = String(value ?? "").toLowerCase().trim();
+  if (lower === "success" || lower === "ok") return "success";
+  if (lower === "warning" || lower === "warn" || lower === "error" || lower === "failed") return "warning";
+  return "info";
+}
+
 function toHealthPayloadFromUnknown(input: any): HealthPayload {
+  const root = input && typeof input === "object" && !Array.isArray(input) ? input : {};
+  const candidate = root.data && typeof root.data === "object" && !Array.isArray(root.data) ? root.data : root;
+
+  const services = Array.isArray(candidate.services)
+    ? candidate.services.map((service: any) => {
+        const lastRunAt =
+          typeof service?.last_run_at === "string" && service.last_run_at.trim()
+            ? service.last_run_at
+            : typeof service?.lastRunAt === "string" && service.lastRunAt.trim()
+            ? service.lastRunAt
+            : null;
+        const minutesSinceRaw = service?.minutes_since ?? service?.minutesSince ?? null;
+        const minutesSince =
+          typeof minutesSinceRaw === "number"
+            ? minutesSinceRaw
+            : typeof minutesSinceRaw === "string" && minutesSinceRaw.trim()
+            ? Number(minutesSinceRaw)
+            : null;
+
+        return {
+          name:
+            typeof service?.name === "string" && service.name.trim()
+              ? service.name.trim()
+              : "Unknown Workflow",
+          status: normalizeHealthServiceStatus(service?.status),
+          last_run_at: lastRunAt,
+          minutes_since: Number.isFinite(minutesSince as number) ? (minutesSince as number) : null,
+          error:
+            typeof service?.error === "string"
+              ? service.error
+              : typeof service?.error_message === "string"
+              ? service.error_message
+              : null,
+        } as HealthService;
+      })
+    : [];
+
+  const logs = Array.isArray(candidate.logs)
+    ? candidate.logs.map((log: any) => ({
+        time:
+          typeof log?.time === "string" && log.time.trim()
+            ? log.time
+            : typeof log?.created_at === "string" && log.created_at.trim()
+            ? log.created_at
+            : null,
+        event:
+          typeof log?.event === "string" && log.event.trim()
+            ? log.event
+            : typeof log?.message === "string" && log.message.trim()
+            ? log.message
+            : "Health event",
+        source:
+          typeof log?.source === "string" && log.source.trim()
+            ? log.source
+            : typeof log?.workflow_name === "string" && log.workflow_name.trim()
+            ? log.workflow_name
+            : "Health Endpoint",
+        status: normalizeHealthLogStatus(log?.status),
+      }))
+    : [];
+
+  const hasRecognizableShape =
+    services.length > 0 || logs.length > 0 || typeof candidate.allOperational === "boolean";
+
+  const ok = typeof candidate.ok === "boolean" ? candidate.ok : hasRecognizableShape;
+
   return {
-    ok: Boolean(input?.ok),
-    allOperational: Boolean(input?.allOperational),
-    services: Array.isArray(input?.services) ? input.services : [],
-    logs: Array.isArray(input?.logs) ? input.logs : [],
-    generated_at: input?.generated_at || new Date().toISOString(),
+    ok,
+    allOperational: typeof candidate.allOperational === "boolean" ? candidate.allOperational : false,
+    services,
+    logs,
+    generated_at:
+      typeof candidate.generated_at === "string" && candidate.generated_at.trim()
+        ? candidate.generated_at
+        : new Date().toISOString(),
   };
 }
 
@@ -454,6 +597,18 @@ async function fetchWithTimeout(url: string, ms = 12000) {
   }
 }
 
+function appendClientIdQuery(url: string, clientId: string | null) {
+  if (!clientId) return url;
+  try {
+    const parsed = new URL(url);
+    parsed.searchParams.set("client_id", clientId);
+    return parsed.toString();
+  } catch {
+    const separator = url.includes("?") ? "&" : "?";
+    return `${url}${separator}client_id=${encodeURIComponent(clientId)}`;
+  }
+}
+
 async function probeEndpoint(url: string, index: number) {
   const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
   const checkedAt = new Date().toISOString();
@@ -490,8 +645,9 @@ async function probeEndpoint(url: string, index: number) {
   }
 }
 
-async function fetchHealthStatus(): Promise<FetchHealthStatusResult> {
-  const probes = await Promise.all(HEALTH_URLS.map((url, index) => probeEndpoint(url, index)));
+async function fetchHealthStatus(clientId: string | null): Promise<FetchHealthStatusResult> {
+  const urls = HEALTH_URLS.map((url) => appendClientIdQuery(url, clientId));
+  const probes = await Promise.all(urls.map((url, index) => probeEndpoint(url, index)));
   const okResult = probes.find((entry) => entry.response?.ok);
 
   if (!okResult || !okResult.response) {
@@ -509,13 +665,13 @@ async function fetchHealthStatus(): Promise<FetchHealthStatusResult> {
     );
   }
 
-  if (!data.ok) {
+  if (data.ok === false) {
     throw new HealthFetchError("Health endpoint returned ok=false", probes.map((entry) => entry.probe));
   }
 
   return {
     payload: {
-      ok: true,
+      ok: data.ok !== false,
       allOperational: !!data.allOperational,
       services: Array.isArray(data.services) ? data.services : [],
       logs: Array.isArray(data.logs) ? data.logs : [],
@@ -524,6 +680,49 @@ async function fetchHealthStatus(): Promise<FetchHealthStatusResult> {
     endpointProbes: probes.map((entry) => entry.probe),
     activeEndpointUrl: okResult.probe.url,
   };
+}
+
+async function fetchAutomationHealthFallback(clientId: string | null): Promise<HealthService[]> {
+  if (!clientId) return [];
+
+  const { data, error } = await supabase
+    .from("automation_health")
+    .select("workflow_name, last_run_at, status, error_message")
+    .eq("client_id", clientId)
+    .returns<AutomationHealthRow[]>();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const rows = Array.isArray(data) ? data : [];
+  return rows
+    .map((row) => {
+      const workflowKey = inferWorkflowKey(row.workflow_name ?? "");
+      if (!workflowKey) return null;
+
+      const lastRunAt =
+        typeof row.last_run_at === "string" && row.last_run_at.trim() ? row.last_run_at : null;
+      const lastRunMs = parseTimestampMs(lastRunAt);
+      const minutesSince =
+        lastRunMs != null
+          ? Math.max(0, Math.floor((Date.now() - lastRunMs) / 60_000))
+          : null;
+
+      let status = normalizeHealthServiceStatus(row.status);
+      if (status === "unknown" && minutesSince != null) {
+        status = minutesSince <= 5 ? "optimal" : minutesSince <= FRESHNESS_STALE_BADGE_MINUTES ? "stale" : "degraded";
+      }
+
+      return {
+        name: normalizeWorkflowName(workflowKey),
+        status,
+        last_run_at: lastRunAt,
+        minutes_since: minutesSince,
+        error: row.error_message,
+      } as HealthService;
+    })
+    .filter((service): service is HealthService => Boolean(service));
 }
 
 function dedupeServices(list: HealthService[]) {
@@ -536,8 +735,8 @@ function dedupeServices(list: HealthService[]) {
       map.set(s.name, s);
       continue;
     }
-    const a = prev.last_run_at ? new Date(prev.last_run_at).getTime() : 0;
-    const b = s.last_run_at ? new Date(s.last_run_at).getTime() : 0;
+    const a = parseTimestampMs(prev.last_run_at) ?? 0;
+    const b = parseTimestampMs(s.last_run_at) ?? 0;
     map.set(s.name, b >= a ? s : prev);
   }
 
@@ -583,8 +782,8 @@ function buildWorkflowServices(list: HealthService[], previous: HealthService[])
       byWorkflow.set(workflowKey, { ...service, name: normalizeWorkflowName(workflowKey) });
       continue;
     }
-    const prevTs = prev.last_run_at ? new Date(prev.last_run_at).getTime() : 0;
-    const nextTs = service.last_run_at ? new Date(service.last_run_at).getTime() : 0;
+    const prevTs = parseTimestampMs(prev.last_run_at) ?? 0;
+    const nextTs = parseTimestampMs(service.last_run_at) ?? 0;
     if (nextTs >= prevTs) {
       byWorkflow.set(workflowKey, { ...service, name: normalizeWorkflowName(workflowKey) });
     }
@@ -684,6 +883,7 @@ function securityStatusClasses(status: SecurityCheck["status"]) {
 
 export function Health() {
   const navigate = useNavigate();
+  const { clientId } = useAuth();
   const [loading, setLoading] = React.useState(true);
   const [payload, setPayload] = React.useState<HealthPayload | null>(null);
   const [err, setErr] = React.useState<string | null>(null);
@@ -726,9 +926,31 @@ export function Health() {
   const run = React.useCallback(async () => {
     setLoading(true);
     try {
-      const result = await fetchHealthStatus();
+      const result = await fetchHealthStatus(clientId);
+      let baseServices = dedupeServices(result.payload.services ?? []);
+      const supplementalLogs: HealthLog[] = [];
+
+      if (!baseServices.length && clientId) {
+        try {
+          const fallbackServices = dedupeServices(await fetchAutomationHealthFallback(clientId));
+          if (fallbackServices.length) {
+            baseServices = fallbackServices;
+            supplementalLogs.push(
+              addSystemLog("Workflow E returned no services. Loaded fallback snapshot from automation_health.", "warning")
+            );
+          }
+        } catch (fallbackError: any) {
+          supplementalLogs.push(
+            addSystemLog(
+              `Workflow fallback query failed: ${fallbackError?.message || "Unknown error"}`,
+              "warning"
+            )
+          );
+        }
+      }
+
       const incomingServices = buildWorkflowServices(
-        dedupeServices(result.payload.services ?? []),
+        baseServices,
         previousServicesRef.current
       );
       const remoteLogs = dedupeLogs(result.payload.logs ?? []);
@@ -759,7 +981,13 @@ export function Health() {
         }
       }
 
-      appendLogs([...remoteLogs, ...statusChangeLogs, ...modeLogs, addSystemLog("Health refresh completed.", "success")]);
+      appendLogs([
+        ...remoteLogs,
+        ...supplementalLogs,
+        ...statusChangeLogs,
+        ...modeLogs,
+        addSystemLog("Health refresh completed.", "success"),
+      ]);
 
       setPayload({
         ...result.payload,
@@ -797,7 +1025,7 @@ export function Health() {
     } finally {
       setLoading(false);
     }
-  }, [appendLogs, nominalRefreshSec]);
+  }, [appendLogs, clientId, nominalRefreshSec]);
 
   const requestRefresh = React.useCallback(() => {
     setRefreshCycleToken((prev) => prev + 1);
@@ -1104,7 +1332,7 @@ export function Health() {
                     Active Route
                   </div>
                   <div className="mt-1 text-xs font-bold">
-                    {networkSnapshot.activeEndpointUrl ? hostFromUrl(networkSnapshot.activeEndpointUrl) : "No active endpoint"}
+                    {activeRouteDisplayName(networkSnapshot)}
                   </div>
                   <div className="mt-1 text-[10px] text-muted-foreground">
                     Last probe: {networkSnapshot.checkedAt ? new Date(networkSnapshot.checkedAt).toLocaleTimeString() : "-"}
@@ -1125,7 +1353,7 @@ export function Health() {
                       </Badge>
                     </div>
                     <div className="mt-1 flex items-center justify-between text-[10px] font-mono text-muted-foreground">
-                      <span>{hostFromUrl(endpoint.url)}</span>
+                      <span>{endpointDisplayName(endpoint.label)}</span>
                       <span>{endpoint.latencyMs != null ? `${endpoint.latencyMs} ms` : "-"}</span>
                     </div>
                     <div className="mt-1 text-[10px] text-muted-foreground">

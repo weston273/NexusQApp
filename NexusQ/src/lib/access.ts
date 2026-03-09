@@ -9,7 +9,7 @@ export type UserProfile = {
   full_name: string | null;
   phone: string | null;
   whatsapp: string | null;
-  avatar_url: string | null;
+  avatar_url?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -38,6 +38,21 @@ export type ClientAccessKeyRow = {
 export type ClaimClientAccessResult = {
   client_id: string;
   role: AccessRole;
+};
+
+export type WorkspaceBootstrapAction = "create_workspace" | "join_workspace";
+
+export type WorkspaceBootstrapResult = {
+  ok: true;
+  action: WorkspaceBootstrapAction;
+  client_id: string;
+  role: AccessRole;
+  access_key?: {
+    raw_key: string;
+    role: AccessRole;
+    expires_at: string | null;
+    key_id: string;
+  } | null;
 };
 
 const ACTIVE_CLIENT_STORAGE_KEY = "nexusq.active-client-id";
@@ -85,7 +100,7 @@ export function pickPrimaryAccessRow(rows: UserAccessRow[], preferredClientId?: 
 export async function fetchCurrentUserProfile(userId: string) {
   return supabase
     .from("user_profiles")
-    .select("id, email, full_name, phone, whatsapp, avatar_url, created_at, updated_at")
+    .select("id, email, full_name, phone, whatsapp, created_at, updated_at")
     .eq("id", userId)
     .maybeSingle<UserProfile>();
 }
@@ -122,11 +137,12 @@ export function normalizeAccessKey(value: string) {
   return value.trim().toUpperCase();
 }
 
-async function parseFunctionError(error: unknown) {
+export async function parseFunctionError(error: unknown) {
   if (!error) return "An unexpected error occurred.";
 
   const functionError = error as { context?: Response; message?: string };
   if (functionError.context instanceof Response) {
+    const status = functionError.context.status;
     try {
       const payload = await functionError.context.json();
       const bodyMessage = payload?.error || payload?.message;
@@ -136,10 +152,71 @@ async function parseFunctionError(error: unknown) {
     } catch {
       // Ignore JSON parsing issues and use fallback message.
     }
+
+    if (status === 401) return "Unauthorized request. Please sign out and sign in again.";
+    if (status === 403) return "Forbidden request. Your account does not have permission for this workspace.";
+    if (status >= 500) return "Server error while processing the request.";
   }
 
   if (error instanceof Error) return error.message;
   return String(error);
+}
+
+async function ensureSignedInSession(forceRefresh = false) {
+  if (forceRefresh) {
+    const { data, error } = await supabase.auth.refreshSession();
+    if (error || !data.session?.access_token) {
+      throw new Error(error?.message || "You are not signed in. Please sign in again.");
+    }
+    return data.session.access_token;
+  }
+
+  const { data, error } = await supabase.auth.getSession();
+  if (error) {
+    throw new Error(`Failed to resolve session: ${error.message}`);
+  }
+  if (!data.session?.access_token) {
+    throw new Error("You are not signed in. Please sign in again.");
+  }
+  return data.session.access_token;
+}
+
+function isUnauthorizedFunctionError(error: unknown) {
+  const functionError = error as { context?: Response };
+  return functionError.context instanceof Response && functionError.context.status === 401;
+}
+
+async function invokeAuthedFunction<T>(name: string, body: Record<string, unknown>) {
+  let token = await ensureSignedInSession();
+
+  let result = await supabase.functions.invoke(name, {
+    body,
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (result.error && isUnauthorizedFunctionError(result.error)) {
+    token = await ensureSignedInSession(true);
+    result = await supabase.functions.invoke(name, {
+      body,
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  }
+
+  if (result.error) {
+    throw new Error(await parseFunctionError(result.error));
+  }
+
+  return result.data as T;
+}
+
+async function invokeWorkspaceBootstrap(payload: Record<string, unknown>): Promise<WorkspaceBootstrapResult> {
+  const data = await invokeAuthedFunction<WorkspaceBootstrapResult | null>("workspace-bootstrap", payload);
+  const result = data ?? null;
+  if (!result?.ok || !result.client_id || !result.role) {
+    throw new Error("Workspace bootstrap returned an invalid response.");
+  }
+
+  return result;
 }
 
 export async function claimWorkspaceAccess(rawKey: string): Promise<ClaimClientAccessResult> {
@@ -156,6 +233,42 @@ export async function claimWorkspaceAccess(rawKey: string): Promise<ClaimClientA
     throw new Error("Access key was accepted, but no client link was returned.");
   }
   return record;
+}
+
+export async function createWorkspaceForCurrentUser(params: {
+  workspaceName: string;
+  timezone: string;
+  generateInitialKey?: boolean;
+  initialKeyRole?: AccessRole;
+  initialKeyLabel?: string;
+  initialKeyExpiresAt?: string | null;
+}): Promise<WorkspaceBootstrapResult> {
+  const workspaceName = params.workspaceName.trim();
+  if (!workspaceName) {
+    throw new Error("Workspace name is required.");
+  }
+
+  return invokeWorkspaceBootstrap({
+    action: "create_workspace",
+    workspace_name: workspaceName,
+    timezone: params.timezone,
+    generate_initial_key: params.generateInitialKey === true,
+    initial_key_role: params.initialKeyRole ?? "admin",
+    initial_key_label: params.initialKeyLabel?.trim() || null,
+    initial_key_expires_at: params.initialKeyExpiresAt ?? null,
+  });
+}
+
+export async function joinWorkspaceForCurrentUser(rawKey: string): Promise<WorkspaceBootstrapResult> {
+  const normalized = normalizeAccessKey(rawKey);
+  if (!normalized) {
+    throw new Error("Access key is required.");
+  }
+
+  return invokeWorkspaceBootstrap({
+    action: "join_workspace",
+    access_key: normalized,
+  });
 }
 
 export async function listClientAccessKeys(clientId: string) {
@@ -175,20 +288,14 @@ export async function createClientAccessKey(params: {
   expiresAt?: string | null;
   confirmOwnerKey?: boolean;
 }) {
-  const { data, error } = await supabase.functions.invoke("create-access-key", {
-    body: {
-      client_id: params.clientId,
-      label: params.label?.trim() || null,
-      role: params.role,
-      is_active: params.isActive,
-      expires_at: params.expiresAt ?? null,
-      confirm_owner_key: params.confirmOwnerKey ?? false,
-    },
+  const payload = await invokeAuthedFunction<{ raw_key?: string; key?: ClientAccessKeyRow }>("create-access-key", {
+    client_id: params.clientId,
+    label: params.label?.trim() || null,
+    role: params.role,
+    is_active: params.isActive,
+    expires_at: params.expiresAt ?? null,
+    confirm_owner_key: params.confirmOwnerKey ?? false,
   });
-
-  if (error) throw new Error(await parseFunctionError(error));
-
-  const payload = data as { raw_key?: string; key?: ClientAccessKeyRow };
   if (!payload?.raw_key || !payload?.key) {
     throw new Error("Access key creation did not return a valid response.");
   }
@@ -197,16 +304,10 @@ export async function createClientAccessKey(params: {
 }
 
 export async function setClientAccessKeyActive(keyId: string, isActive: boolean) {
-  const { data, error } = await supabase.functions.invoke("revoke-access-key", {
-    body: {
-      key_id: keyId,
-      is_active: isActive,
-    },
+  const payload = await invokeAuthedFunction<{ key?: ClientAccessKeyRow }>("revoke-access-key", {
+    key_id: keyId,
+    is_active: isActive,
   });
-
-  if (error) throw new Error(await parseFunctionError(error));
-
-  const payload = data as { key?: ClientAccessKeyRow };
   if (!payload?.key) {
     throw new Error("Access key update did not return a valid response.");
   }

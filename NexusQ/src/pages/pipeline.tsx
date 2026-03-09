@@ -338,36 +338,106 @@ function parseMoneyInput(v: string) {
 }
 
 // ---------- Workflow D caller ----------
-async function callWorkflowD(args: { lead_id: string; status: StageId; value?: number | null }) {
-  const url =
-    (import.meta as any)?.env?.VITE_WORKFLOW_D_URL ||
-    "https://n8n-k7j4.onrender.com/webhook/pipeline-update" || "https://n8n-k7j4.onrender.com/webhook-test/pipeline-update";
+const WORKFLOW_D_DEFAULT_URL = "https://n8n-k7j4.onrender.com/webhook/pipeline-update";
 
+function readViteEnv(key: string) {
+  const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env;
+  const value = env?.[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function uniqueNonEmpty(values: Array<string | null | undefined>) {
+  const out: string[] = [];
+  for (const value of values) {
+    const trimmed = String(value ?? "").trim();
+    if (!trimmed) continue;
+    if (!out.includes(trimmed)) out.push(trimmed);
+  }
+  return out;
+}
+
+async function parseWorkflowDResponse(res: Response) {
+  const text = (await res.text()).trim();
+  if (!text) return {};
+  try {
+    return JSON.parse(text) as {
+      ok?: boolean;
+      _error?: boolean;
+      error?: string;
+      message?: string;
+      stage?: string;
+      lead_id?: string;
+    };
+  } catch {
+    return { message: text.slice(0, 220) };
+  }
+}
+
+async function postPipelineUpdate(args: {
+  url: string;
+  payload: Record<string, unknown>;
+  secret: string | null;
+}) {
+  const ctrl = new AbortController();
+  const timeout = setTimeout(() => ctrl.abort(), 12000);
+  try {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (args.secret) {
+      headers["x-nexusq-secret"] = args.secret;
+    }
+    return await withRetry(
+      () =>
+        fetch(args.url, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(args.payload),
+          signal: ctrl.signal,
+        }),
+      { retries: 2, baseDelayMs: 350 }
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function callWorkflowD(args: { lead_id: string; status: StageId; value?: number | null }) {
+  const urls = uniqueNonEmpty([
+    readViteEnv("VITE_WORKFLOW_D_URL"),
+    readViteEnv("VITE_WORKFLOW_D_FALLBACK_URL"),
+    WORKFLOW_D_DEFAULT_URL,
+  ]);
+  if (!urls.length) {
+    throw new Error("Workflow D endpoint is not configured.");
+  }
+
+  const secret = readViteEnv("VITE_WORKFLOW_D_SECRET") || null;
   const payload = {
     lead_id: args.lead_id,
     status: args.status,
+    stage: args.status,
     value: args.value ?? null,
   };
 
-  const res = await withRetry(
-    () =>
-      fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      }),
-    { retries: 2, baseDelayMs: 350 }
-  );
+  let lastError = "Workflow D failed.";
+  for (const url of urls) {
+    try {
+      const res = await postPipelineUpdate({ url, payload, secret });
+      const data = await parseWorkflowDResponse(res);
 
-  const data = await res.json().catch(() => ({}));
+      // Accept any 2xx response that does not explicitly signal an error.
+      if (res.ok && data._error !== true && data.ok !== false) {
+        return data;
+      }
 
-  // If your workflow returns {ok:true} on success, this is correct.
-  // (Right now it likely fails due to missing client_key until you tweak Workflow D.)
-  if (!res.ok || !data?.ok) {
-    throw new Error(data?.error || `Workflow D failed (${res.status})`);
+      const reason = data?.error || data?.message || `HTTP ${res.status}`;
+      lastError = `Workflow D request failed at ${url}: ${reason}`;
+    } catch (error: any) {
+      const msg = error?.message || "Unknown network error";
+      lastError = `Workflow D request failed at ${url}: ${msg}`;
+    }
   }
 
-  return data;
+  throw new Error(lastError);
 }
 
 export function Pipeline() {

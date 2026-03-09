@@ -46,11 +46,11 @@ export function SignupPage() {
 
     if (data.session) {
       toast.success("Account created.");
-      navigate("/", { replace: true });
+      navigate("/link-workspace?mode=create", { replace: true });
       return;
     }
 
-    setMessage("Account created. Check your email to confirm your account, then log in.");
+    setMessage("Account created. Confirm your email, then sign in to create or join a workspace.");
   };
 
   const onGoogle = async () => {
