@@ -61,6 +61,7 @@ const stages = [
 
 type StageId = (typeof stages)[number]["id"];
 const stageOrder: StageId[] = ["new", "qualifying", "quoted", "booked"];
+const DEFAULT_VISIBLE_LEADS = 10;
 
 type UiLead = {
   id: string;
@@ -71,6 +72,7 @@ type UiLead = {
   time: string;
   stage: StageId;
   probability: number | null;
+  createdAtMs: number;
 };
 
 function isStageId(value: string): value is StageId {
@@ -337,6 +339,19 @@ function parseMoneyInput(v: string) {
   return num;
 }
 
+function formatDateTime(value?: string | null) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "—";
+  return date.toLocaleString();
+}
+
+function formatNullableText(value: unknown) {
+  if (value === null || value === undefined) return "—";
+  const text = String(value).trim();
+  return text ? text : "—";
+}
+
 // ---------- Workflow D caller ----------
 const WORKFLOW_D_DEFAULT_URL = "https://n8n-k7j4.onrender.com/webhook/pipeline-update";
 
@@ -442,7 +457,7 @@ async function callWorkflowD(args: { lead_id: string; status: StageId; value?: n
 
 export function Pipeline() {
   const navigate = useNavigate();
-  const { leads, pipelineRows, loading, error, lastLoadedAt, reload } = useLeads();
+  const { leads, events, pipelineRows, loading, error, lastLoadedAt, reload } = useLeads();
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 140, tolerance: 6 } })
@@ -461,6 +476,7 @@ export function Pipeline() {
 
   const [editStage, setEditStage] = React.useState<StageId>("new");
   const [editValue, setEditValue] = React.useState<string>("0");
+  const [showAllLeads, setShowAllLeads] = React.useState(false);
   const [stageOverrides, setStageOverrides] = React.useState<Record<string, StageId>>({});
   const [activeDragLeadId, setActiveDragLeadId] = React.useState<string | null>(null);
   const dragOriginRef = React.useRef<Record<string, StageId>>({});
@@ -481,6 +497,25 @@ export function Pipeline() {
     }
     return m;
   }, [pipelineRows]);
+
+  const leadSourceById = React.useMemo(() => {
+    const map = new Map<string, (typeof leads)[number]>();
+    for (const lead of leads ?? []) {
+      map.set(lead.id, lead);
+    }
+    return map;
+  }, [leads]);
+
+  const latestEventByLeadId = React.useMemo(() => {
+    const map = new Map<string, (typeof events)[number]>();
+    for (const event of events ?? []) {
+      if (!event.lead_id) continue;
+      if (!map.has(event.lead_id)) {
+        map.set(event.lead_id, event);
+      }
+    }
+    return map;
+  }, [events]);
 
   // UI leads: stage from pipeline first, fallback to leads.status
   const uiLeads = React.useMemo<UiLead[]>(() => {
@@ -504,15 +539,82 @@ export function Pipeline() {
         time: new Date(l.created_at).toLocaleDateString(),
         stage,
         probability: pipe?.probability ?? null,
+        createdAtMs: new Date(l.created_at ?? 0).getTime() || 0,
       };
     });
   }, [leads, pipelineByLeadId, stageOverrides]);
+
+  const sortedLeadIdsByRecency = React.useMemo(() => {
+    return [...uiLeads]
+      .sort((a, b) => b.createdAtMs - a.createdAtMs)
+      .map((lead) => lead.id);
+  }, [uiLeads]);
+
+  const visibleLeadIds = React.useMemo(() => {
+    const ids = showAllLeads ? sortedLeadIdsByRecency : sortedLeadIdsByRecency.slice(0, DEFAULT_VISIBLE_LEADS);
+    return new Set(ids);
+  }, [showAllLeads, sortedLeadIdsByRecency]);
+
+  const visibleUiLeads = React.useMemo(
+    () => uiLeads.filter((lead) => visibleLeadIds.has(lead.id)),
+    [uiLeads, visibleLeadIds]
+  );
+
+  const hasMoreLeads = uiLeads.length > DEFAULT_VISIBLE_LEADS;
+  const hiddenLeadCount = Math.max(0, uiLeads.length - DEFAULT_VISIBLE_LEADS);
+
+  React.useEffect(() => {
+    if (uiLeads.length <= DEFAULT_VISIBLE_LEADS && showAllLeads) {
+      setShowAllLeads(false);
+    }
+  }, [showAllLeads, uiLeads.length]);
 
   const leadById = React.useMemo(() => {
     const map = new Map<string, UiLead>();
     for (const lead of uiLeads) map.set(lead.id, lead);
     return map;
   }, [uiLeads]);
+
+  const activeLeadSource = React.useMemo(() => {
+    if (!activeLead) return null;
+    return leadSourceById.get(activeLead.id) ?? null;
+  }, [activeLead, leadSourceById]);
+
+  const activePipeline = React.useMemo(() => {
+    if (!activeLead) return null;
+    return pipelineByLeadId.get(activeLead.id) ?? null;
+  }, [activeLead, pipelineByLeadId]);
+
+  const activeLatestEvent = React.useMemo(() => {
+    if (!activeLead) return null;
+    return latestEventByLeadId.get(activeLead.id) ?? null;
+  }, [activeLead, latestEventByLeadId]);
+
+  const activeEventSummary = React.useMemo(() => {
+    if (!activeLatestEvent) {
+      return {
+        type: "—",
+        detail: "No recent activity available.",
+        time: "—",
+      };
+    }
+
+    const payload = (activeLatestEvent.payload_json ?? null) as any;
+    const detailCandidate =
+      (typeof payload?.message === "string" && payload.message.trim()) ||
+      (typeof payload?.summary === "string" && payload.summary.trim()) ||
+      (typeof payload?.body === "string" && payload.body.trim()) ||
+      (typeof payload?.note === "string" && payload.note.trim()) ||
+      (typeof payload?.status === "string" && payload.status.trim()) ||
+      (typeof payload?.stage === "string" && payload.stage.trim()) ||
+      "";
+
+    return {
+      type: String(activeLatestEvent.event_type ?? "event").replace(/_/g, " "),
+      detail: detailCandidate || "Event received with no additional text payload.",
+      time: formatDateTime(activeLatestEvent.created_at),
+    };
+  }, [activeLatestEvent]);
 
   const stageCounts = React.useMemo(() => {
     return {
@@ -804,6 +906,22 @@ export function Pipeline() {
           />
         ) : null}
 
+        {hasMoreLeads ? (
+          <div className="flex items-center justify-between rounded-lg border bg-muted/20 px-3 py-2">
+            <div className="text-xs text-muted-foreground">
+              Showing {showAllLeads ? uiLeads.length : DEFAULT_VISIBLE_LEADS} of {uiLeads.length} most recent leads.
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8"
+              onClick={() => setShowAllLeads((prev) => !prev)}
+            >
+              {showAllLeads ? "Show Less" : `Show More (${hiddenLeadCount})`}
+            </Button>
+          </div>
+        ) : null}
+
         <DndContext
           sensors={sensors}
           onDragStart={handleDragStart}
@@ -813,34 +931,35 @@ export function Pipeline() {
         >
           <ScrollArea className="w-full whitespace-nowrap rounded-md border-none" aria-label="Pipeline stage board">
             <div className="flex w-max space-x-6 min-h-[600px]">
-              {stages.map((stage) => (
-                <div key={stage.id} className="w-[85vw] sm:w-[300px] flex flex-col space-y-4" role="region" aria-label={`${stage.title} column`}>
-                  <div className="flex items-center justify-between px-2">
-                    <div className="flex items-center gap-2">
-                      <div className={cn("h-2 w-2 rounded-full", stage.color)} />
-                      <h3 className="font-bold text-sm uppercase tracking-wider">{stage.title}</h3>
-                      <Badge
-                        variant="secondary"
-                        className="ml-1 text-[10px] h-4 px-1.5 bg-muted/50 text-muted-foreground"
+              {stages.map((stage) => {
+                const stageLeads = visibleUiLeads.filter((l) => l.stage === stage.id);
+                const totalStageLeads = uiLeads.filter((l) => l.stage === stage.id).length;
+                return (
+                  <div key={stage.id} className="w-[85vw] sm:w-[300px] flex flex-col space-y-4" role="region" aria-label={`${stage.title} column`}>
+                    <div className="flex items-center justify-between px-2">
+                      <div className="flex items-center gap-2">
+                        <div className={cn("h-2 w-2 rounded-full", stage.color)} />
+                        <h3 className="font-bold text-sm uppercase tracking-wider">{stage.title}</h3>
+                        <Badge
+                          variant="secondary"
+                          className="ml-1 text-[10px] h-4 px-1.5 bg-muted/50 text-muted-foreground"
+                        >
+                          {showAllLeads ? stageLeads.length : `${stageLeads.length}/${totalStageLeads}`}
+                        </Badge>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => toast.info(`${stage.title} actions are available in the lead cards below.`)}
+                        aria-label={`${stage.title} column actions`}
                       >
-                        {uiLeads.filter((l) => l.stage === stage.id).length}
-                      </Badge>
+                        <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                      </Button>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => toast.info(`${stage.title} actions are available in the lead cards below.`)}
-                      aria-label={`${stage.title} column actions`}
-                    >
-                      <MoreVertical className="h-4 w-4 text-muted-foreground" />
-                    </Button>
-                  </div>
 
-                  <DroppableColumn stageId={stage.id} stageTitle={stage.title}>
-                    {uiLeads
-                      .filter((l) => l.stage === stage.id)
-                      .map((lead) => (
+                    <DroppableColumn stageId={stage.id} stageTitle={stage.title}>
+                      {stageLeads.map((lead) => (
                         <DraggableLeadCard
                           key={lead.id}
                           lead={lead}
@@ -850,23 +969,24 @@ export function Pipeline() {
                         />
                       ))}
 
-                    {!uiLeads.filter((l) => l.stage === stage.id).length && (
-                      <div className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
-                        No leads in {stage.title} yet.
-                      </div>
-                    )}
+                      {!stageLeads.length && (
+                        <div className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
+                          No leads in {stage.title} yet.
+                        </div>
+                      )}
 
-                    <Button
-                      variant="ghost"
-                      className="w-full border-2 border-dashed border-border/20 h-12 text-muted-foreground text-xs hover:border-border/50 hover:bg-muted/5"
-                      onClick={() => navigate("/intake")}
-                    >
-                      <Plus className="h-3 w-3 mr-2" />
-                      Add Lead
-                    </Button>
-                  </DroppableColumn>
-                </div>
-              ))}
+                      <Button
+                        variant="ghost"
+                        className="w-full border-2 border-dashed border-border/20 h-12 text-muted-foreground text-xs hover:border-border/50 hover:bg-muted/5"
+                        onClick={() => navigate("/intake")}
+                      >
+                        <Plus className="h-3 w-3 mr-2" />
+                        Add Lead
+                      </Button>
+                    </DroppableColumn>
+                  </div>
+                );
+              })}
             </div>
             <ScrollBar orientation="horizontal" />
           </ScrollArea>
@@ -889,7 +1009,7 @@ export function Pipeline() {
 
       {/* -------- Edit Modal -------- */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-[520px]">
+        <DialogContent className="sm:max-w-[720px] max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Update Pipeline</DialogTitle>
             <DialogDescription>
@@ -906,6 +1026,87 @@ export function Pipeline() {
               <div className="text-xs text-muted-foreground">Lead</div>
               <div className="font-bold">{activeLead?.name ?? "-"}</div>
               <div className="text-[10px] text-muted-foreground">ID: {activeLead?.id ?? "-"}</div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="rounded-lg border bg-muted/10 p-3">
+                <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Lead Details</div>
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-muted-foreground">Phone</span>
+                    <span className="text-right font-medium break-all">{formatNullableText(activeLeadSource?.phone)}</span>
+                  </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-muted-foreground">Email</span>
+                    <span className="text-right font-medium break-all">{formatNullableText(activeLeadSource?.email)}</span>
+                  </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-muted-foreground">Service</span>
+                    <span className="text-right font-medium">{formatNullableText(activeLeadSource?.service)}</span>
+                  </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-muted-foreground">Urgency</span>
+                    <span className="text-right font-medium">{formatNullableText(activeLeadSource?.urgency)}</span>
+                  </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-muted-foreground">Address</span>
+                    <span className="text-right font-medium break-words">{formatNullableText(activeLeadSource?.address)}</span>
+                  </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-muted-foreground">Source</span>
+                    <span className="text-right font-medium">{formatNullableText(activeLeadSource?.source)}</span>
+                  </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-muted-foreground">Score</span>
+                    <span className="text-right font-medium">{formatNullableText(activeLeadSource?.score)}</span>
+                  </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-muted-foreground">Status</span>
+                    <span className="text-right font-medium">{formatNullableText(activeLeadSource?.status ?? activeLead?.stage)}</span>
+                  </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-muted-foreground">Created</span>
+                    <span className="text-right font-medium">{formatDateTime(activeLeadSource?.created_at)}</span>
+                  </div>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-muted-foreground">Last Contacted</span>
+                    <span className="text-right font-medium">{formatDateTime(activeLeadSource?.last_contacted_at)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-lg border bg-muted/10 p-3 space-y-3">
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Pipeline Snapshot</div>
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-muted-foreground">Current Stage</span>
+                      <span className="text-right font-medium">{formatNullableText(activePipeline?.stage ?? activeLead?.stage)}</span>
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-muted-foreground">Pipeline Value</span>
+                      <span className="text-right font-medium">
+                        ${formatMoney(Number(activePipeline?.value ?? activeLead?.valueNum ?? 0))}
+                      </span>
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-muted-foreground">Probability</span>
+                      <span className="text-right font-medium">
+                        {activePipeline?.probability == null ? "—" : `${activePipeline.probability}%`}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t pt-3">
+                  <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Latest Activity</div>
+                  <div className="space-y-1 text-xs">
+                    <div className="font-medium">{activeEventSummary.type}</div>
+                    <div className="text-muted-foreground leading-relaxed">{activeEventSummary.detail}</div>
+                    <div className="text-[10px] text-muted-foreground">{activeEventSummary.time}</div>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
