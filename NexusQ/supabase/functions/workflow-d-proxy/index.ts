@@ -18,10 +18,45 @@ type PersistenceSnapshot = {
   lead_status: string | null;
 };
 
+const WORKFLOW_D_DEFAULT_URL = "https://n8n-k7j4.onrender.com/webhook/pipeline-update";
+
 function getEnv(name: string) {
   const value = Deno.env.get(name);
   if (!value) throw new Error(`Missing required env var: ${name}`);
   return value;
+}
+
+function getOptionalEnv(name: string) {
+  const value = Deno.env.get(name);
+  if (!value) return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function resolveWorkflowDUrl() {
+  const candidates = [
+    getOptionalEnv("WORKFLOW_D_URL"),
+    getOptionalEnv("WORKFLOW_D_WEBHOOK_URL"),
+    getOptionalEnv("VITE_WORKFLOW_D_URL"),
+    WORKFLOW_D_DEFAULT_URL,
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    if (candidate.includes("your-n8n-host") || candidate.includes("your-secondary-host")) {
+      continue;
+    }
+    try {
+      const parsed = new URL(candidate);
+      if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+        return candidate;
+      }
+    } catch {
+      // Ignore malformed URL and continue to next candidate.
+    }
+  }
+
+  throw new Error("No valid Workflow D URL configured.");
 }
 
 function isUuid(value: string) {
@@ -196,7 +231,7 @@ async function parseWorkflowPayload(response: Response) {
 
 async function forwardWorkflowD(args: {
   workflowUrl: string;
-  secret: string;
+  secret?: string | null;
   payload: Record<string, unknown>;
 }) {
   const timeoutMs = 12000;
@@ -207,12 +242,16 @@ async function forwardWorkflowD(args: {
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (args.secret) {
+        headers["x-nexusq-secret"] = args.secret;
+      }
+
       const response = await fetch(args.workflowUrl, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-nexusq-secret": args.secret,
-        },
+        headers,
         body: JSON.stringify(args.payload),
         signal: controller.signal,
       });
@@ -264,8 +303,8 @@ Deno.serve(async (request) => {
       );
     }
 
-    const workflowUrl = getEnv("WORKFLOW_D_URL");
-    const workflowSecret = getEnv("NEXUSQ_PIPELINE_SECRET");
+    const workflowUrl = resolveWorkflowDUrl();
+    const workflowSecret = getOptionalEnv("NEXUSQ_PIPELINE_SECRET");
     const upstreamPayload = {
       lead_id: leadId,
       client_id: context.clientId,

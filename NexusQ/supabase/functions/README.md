@@ -43,7 +43,8 @@ Frontend claim flow uses the same normalization rule before calling `public.clai
 - `workflow-d-proxy`
   - Verifies caller auth token.
   - Resolves lead context and verifies caller has active `user_access` to the lead client.
-  - Injects `x-nexusq-secret` server-side and forwards request to Workflow D.
+  - Resolves Workflow D URL from `WORKFLOW_D_URL` (preferred), then `WORKFLOW_D_WEBHOOK_URL`, then `VITE_WORKFLOW_D_URL`, then built-in default.
+  - Injects `x-nexusq-secret` server-side when `NEXUSQ_PIPELINE_SECRET` is configured.
   - Verifies that `pipeline.stage` and `leads.status` actually persisted before returning success.
   - Returns normalized JSON to frontend.
 
@@ -54,8 +55,13 @@ Set in Supabase project secrets:
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `WORKFLOW_D_URL` (for `workflow-d-proxy`)
-- `NEXUSQ_PIPELINE_SECRET` (for `workflow-d-proxy`)
+- `WORKFLOW_D_URL` (recommended for `workflow-d-proxy`)
+
+Optional:
+
+- `WORKFLOW_D_WEBHOOK_URL` (legacy alias fallback)
+- `VITE_WORKFLOW_D_URL` (legacy alias fallback)
+- `NEXUSQ_PIPELINE_SECRET` (if set, proxy sends `x-nexusq-secret`)
 
 ## Deploy
 
