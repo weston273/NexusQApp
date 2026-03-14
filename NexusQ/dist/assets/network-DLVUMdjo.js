@@ -1,1 +1,0 @@
-async function c(a){await new Promise(t=>setTimeout(t,a))}async function w(a,t){const r=t?.retries??2,i=t?.baseDelayMs??300;let e=0,s;for(;e<=r;)try{return await a()}catch(o){if(s=o,e===r)break;const n=i*Math.pow(2,e);await c(n),e+=1}throw s}export{w};

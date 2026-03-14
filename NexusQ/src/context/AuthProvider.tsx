@@ -143,6 +143,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (error) {
       setAuthError(error.message);
       setLoading(false);
+      throw error;
     }
   }, []);
 

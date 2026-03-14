@@ -1,4 +1,4 @@
-// src/pages/Pipeline.tsx
+﻿// src/pages/Pipeline.tsx
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useLeads } from "@/hooks/useLeads";
@@ -50,7 +50,8 @@ import { Label } from "@/components/ui/label";
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { withRetry } from "@/lib/network";
+import { supabase } from "@/lib/supabase";
+import { parseFunctionError } from "@/lib/access";
 
 const stages = [
   { id: "new", title: "New", color: "bg-blue-500" },
@@ -340,119 +341,38 @@ function parseMoneyInput(v: string) {
 }
 
 function formatDateTime(value?: string | null) {
-  if (!value) return "—";
+  if (!value) return "-";
   const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "—";
+  if (!Number.isFinite(date.getTime())) return "-";
   return date.toLocaleString();
 }
 
 function formatNullableText(value: unknown) {
-  if (value === null || value === undefined) return "—";
+  if (value === null || value === undefined) return "-";
   const text = String(value).trim();
-  return text ? text : "—";
+  return text ? text : "-";
 }
 
 // ---------- Workflow D caller ----------
-const WORKFLOW_D_DEFAULT_URL = "https://n8n-k7j4.onrender.com/webhook/pipeline-update";
-
-function readViteEnv(key: string) {
-  const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env;
-  const value = env?.[key];
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function uniqueNonEmpty(values: Array<string | null | undefined>) {
-  const out: string[] = [];
-  for (const value of values) {
-    const trimmed = String(value ?? "").trim();
-    if (!trimmed) continue;
-    if (!out.includes(trimmed)) out.push(trimmed);
-  }
-  return out;
-}
-
-async function parseWorkflowDResponse(res: Response) {
-  const text = (await res.text()).trim();
-  if (!text) return {};
-  try {
-    return JSON.parse(text) as {
-      ok?: boolean;
-      _error?: boolean;
-      error?: string;
-      message?: string;
-      stage?: string;
-      lead_id?: string;
-    };
-  } catch {
-    return { message: text.slice(0, 220) };
-  }
-}
-
-async function postPipelineUpdate(args: {
-  url: string;
-  payload: Record<string, unknown>;
-  secret: string | null;
-}) {
-  const ctrl = new AbortController();
-  const timeout = setTimeout(() => ctrl.abort(), 12000);
-  try {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (args.secret) {
-      headers["x-nexusq-secret"] = args.secret;
-    }
-    return await withRetry(
-      () =>
-        fetch(args.url, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(args.payload),
-          signal: ctrl.signal,
-        }),
-      { retries: 2, baseDelayMs: 350 }
-    );
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 async function callWorkflowD(args: { lead_id: string; status: StageId; value?: number | null }) {
-  const urls = uniqueNonEmpty([
-    readViteEnv("VITE_WORKFLOW_D_URL"),
-    readViteEnv("VITE_WORKFLOW_D_FALLBACK_URL"),
-    WORKFLOW_D_DEFAULT_URL,
-  ]);
-  if (!urls.length) {
-    throw new Error("Workflow D endpoint is not configured.");
-  }
-
-  const secret = readViteEnv("VITE_WORKFLOW_D_SECRET") || null;
-  const payload = {
+  const payload: Record<string, unknown> = {
     lead_id: args.lead_id,
     status: args.status,
     stage: args.status,
     value: args.value ?? null,
   };
 
-  let lastError = "Workflow D failed.";
-  for (const url of urls) {
-    try {
-      const res = await postPipelineUpdate({ url, payload, secret });
-      const data = await parseWorkflowDResponse(res);
-
-      // Accept any 2xx response that does not explicitly signal an error.
-      if (res.ok && data._error !== true && data.ok !== false) {
-        return data;
-      }
-
-      const reason = data?.error || data?.message || `HTTP ${res.status}`;
-      lastError = `Workflow D request failed at ${url}: ${reason}`;
-    } catch (error: any) {
-      const msg = error?.message || "Unknown network error";
-      lastError = `Workflow D request failed at ${url}: ${msg}`;
-    }
+  const { data, error } = await supabase.functions.invoke("workflow-d-proxy", {
+    body: payload,
+  });
+  if (error) {
+    throw new Error(await parseFunctionError(error));
   }
-
-  throw new Error(lastError);
+  if (!data?.ok) {
+    const message = typeof data?.error === "string" ? data.error : "Workflow D failed.";
+    throw new Error(message);
+  }
+  return data;
 }
 
 export function Pipeline() {
@@ -593,9 +513,9 @@ export function Pipeline() {
   const activeEventSummary = React.useMemo(() => {
     if (!activeLatestEvent) {
       return {
-        type: "—",
+        type: "-",
         detail: "No recent activity available.",
-        time: "—",
+        time: "-",
       };
     }
 
@@ -1092,7 +1012,7 @@ export function Pipeline() {
                     <div className="flex items-start justify-between gap-3">
                       <span className="text-muted-foreground">Probability</span>
                       <span className="text-right font-medium">
-                        {activePipeline?.probability == null ? "—" : `${activePipeline.probability}%`}
+                        {activePipeline?.probability == null ? "-" : `${activePipeline.probability}%`}
                       </span>
                     </div>
                   </div>
@@ -1154,5 +1074,7 @@ export function Pipeline() {
     </>
   );
 }
+
+
 
 

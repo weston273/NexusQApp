@@ -4,6 +4,7 @@ node_modules
 .tmp_audit/
 tools/
 NexusQ/supabase/.temp/
+NexusQ/dist/
 
 # Local env
 NexusQ/.env.local

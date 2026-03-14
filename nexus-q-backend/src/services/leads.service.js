@@ -1,5 +1,6 @@
 const supabase = require('../config/supabase');
 const { emitEvent } = require('./events.service');
+const logger = require('../utils/logger');
 
 async function createLead({ first_name, last_name, email, phone, source }) {
   const { data: lead, error } = await supabase
@@ -15,7 +16,7 @@ async function createLead({ first_name, last_name, email, phone, source }) {
     .single();
 
   if (error) {
-    console.error('Failed to create lead', error);
+    logger.error('Failed to create lead', { error: error.message });
     throw error;
   }
 

@@ -1,0 +1,13 @@
+module.exports = {
+  extends: ["stylelint-config-standard"],
+  ignoreFiles: ["dist/**", "node_modules/**"],
+  rules: {
+    "at-rule-no-unknown": [
+      true,
+      {
+        ignoreAtRules: ["tailwind", "apply", "layer", "variants", "responsive", "screen"],
+      },
+    ],
+    "selector-class-pattern": null,
+  },
+};

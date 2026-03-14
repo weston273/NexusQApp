@@ -78,7 +78,7 @@ export function Header({
   const { leads, events, loading, error, lastLoadedAt } = useLeads();
   const [commandOpen, setCommandOpen] = React.useState(false);
   const [notificationsOpen, setNotificationsOpen] = React.useState(false);
-  const [clockTick, setClockTick] = React.useState(Date.now());
+  const [clockTick, setClockTick] = React.useState(() => Date.now());
   const [lastReadAt, setLastReadAt] = React.useState<number>(() => {
     const raw = localStorage.getItem(LAST_NOTIFICATION_READ_KEY);
     const n = Number(raw);
@@ -234,9 +234,13 @@ export function Header({
   };
 
   const handleSignOut = async () => {
-    await signOut();
-    navigate("/login", { replace: true });
-    toast.success("Signed out.");
+    try {
+      await signOut();
+      navigate("/login", { replace: true });
+      toast.success("Signed out.");
+    } catch (error: any) {
+      toast.error(error?.message || "Sign-out failed. Please try again.");
+    }
   };
 
   return (

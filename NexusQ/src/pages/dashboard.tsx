@@ -25,9 +25,6 @@ import {
   PieChart,
   Pie,
   Cell,
-  FunnelChart,
-  Funnel,
-  LabelList,
 } from "recharts";
 
 // -------------------------

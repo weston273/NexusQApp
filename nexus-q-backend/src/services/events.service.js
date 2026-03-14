@@ -1,5 +1,6 @@
 const supabase = require('../config/supabase');
 const { notifyAutomation } = require('./automationTrigger.service');
+const logger = require('../utils/logger');
 
 async function emitEvent({
   entityType,
@@ -21,7 +22,7 @@ async function emitEvent({
     .single();
 
   if (error) {
-    console.error('Failed to emit event', error);
+    logger.error('Failed to emit event', { error: error.message });
     throw error;
   }
 

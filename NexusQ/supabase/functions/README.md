@@ -43,10 +43,23 @@ Frontend claim flow uses the same normalization rule before calling `public.clai
 - `workflow-d-proxy`
   - Verifies caller auth token.
   - Resolves lead context and verifies caller has active `user_access` to the lead client.
-  - Resolves Workflow D URL from `WORKFLOW_D_URL` (preferred), then `WORKFLOW_D_WEBHOOK_URL`, then `VITE_WORKFLOW_D_URL`, then built-in default.
+  - Resolves Workflow D URL from `WORKFLOW_D_URL` (preferred), then `WORKFLOW_D_WEBHOOK_URL`, then `WORKFLOW_D_FALLBACK_URL`.
   - Injects `x-nexusq-secret` server-side when `NEXUSQ_PIPELINE_SECRET` is configured.
   - Verifies that `pipeline.stage` and `leads.status` actually persisted before returning success.
   - Returns normalized JSON to frontend.
+
+- `workflow-a-proxy`
+  - Verifies caller auth token.
+  - Optionally verifies workspace membership when `client_id` is provided.
+  - Resolves Workflow A URL from `WORKFLOW_A_URL` (preferred), then `WORKFLOW_A_WEBHOOK_URL`, then `WORKFLOW_A_FALLBACK_URL`.
+  - Injects `x-nexusq-secret` server-side when `NEXUSQ_WORKFLOW_A_SECRET` is configured.
+  - Returns normalized JSON to frontend.
+
+- `workflow-e-proxy`
+  - Verifies caller auth token.
+  - Optionally verifies workspace membership when `client_id` is provided.
+  - Resolves Workflow E URL from `WORKFLOW_E_STATUS_URL` (preferred), then `WORKFLOW_E_WEBHOOK_URL`, then `WORKFLOW_E_STATUS_FALLBACK_URL`.
+  - Returns normalized JSON health payload to frontend.
 
 ## Required Function Secrets
 
@@ -56,12 +69,19 @@ Set in Supabase project secrets:
 - `SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `WORKFLOW_D_URL` (recommended for `workflow-d-proxy`)
+- `WORKFLOW_A_URL` (recommended for `workflow-a-proxy`)
+- `WORKFLOW_E_STATUS_URL` (recommended for `workflow-e-proxy`)
 
 Optional:
 
 - `WORKFLOW_D_WEBHOOK_URL` (legacy alias fallback)
-- `VITE_WORKFLOW_D_URL` (legacy alias fallback)
+- `WORKFLOW_D_FALLBACK_URL` (optional fallback)
+- `WORKFLOW_A_WEBHOOK_URL` (legacy alias fallback)
+- `WORKFLOW_A_FALLBACK_URL` (optional fallback)
+- `WORKFLOW_E_WEBHOOK_URL` (legacy alias fallback)
+- `WORKFLOW_E_STATUS_FALLBACK_URL` (optional fallback)
 - `NEXUSQ_PIPELINE_SECRET` (if set, proxy sends `x-nexusq-secret`)
+- `NEXUSQ_WORKFLOW_A_SECRET` (if set, proxy sends `x-nexusq-secret`)
 
 ## Deploy
 
@@ -70,6 +90,8 @@ supabase functions deploy create-access-key
 supabase functions deploy revoke-access-key
 supabase functions deploy workspace-bootstrap
 supabase functions deploy workflow-d-proxy
+supabase functions deploy workflow-a-proxy
+supabase functions deploy workflow-e-proxy
 ```
 
 If running locally:

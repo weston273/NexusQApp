@@ -18,8 +18,6 @@ type PersistenceSnapshot = {
   lead_status: string | null;
 };
 
-const WORKFLOW_D_DEFAULT_URL = "https://n8n-k7j4.onrender.com/webhook/pipeline-update";
-
 function getEnv(name: string) {
   const value = Deno.env.get(name);
   if (!value) throw new Error(`Missing required env var: ${name}`);
@@ -37,15 +35,11 @@ function resolveWorkflowDUrl() {
   const candidates = [
     getOptionalEnv("WORKFLOW_D_URL"),
     getOptionalEnv("WORKFLOW_D_WEBHOOK_URL"),
-    getOptionalEnv("VITE_WORKFLOW_D_URL"),
-    WORKFLOW_D_DEFAULT_URL,
+    getOptionalEnv("WORKFLOW_D_FALLBACK_URL"),
   ];
 
   for (const candidate of candidates) {
     if (!candidate) continue;
-    if (candidate.includes("your-n8n-host") || candidate.includes("your-secondary-host")) {
-      continue;
-    }
     try {
       const parsed = new URL(candidate);
       if (parsed.protocol === "http:" || parsed.protocol === "https:") {

@@ -6,8 +6,28 @@ const leadsRoutes = require('./routes/leads.routes');
 
 const app = express();
 
-app.use(cors());
-app.use(express.json());
+const allowedOrigins = String(process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean);
+
+app.disable('x-powered-by');
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+      if (!allowedOrigins.length || allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error('Origin not allowed by CORS'));
+    },
+  })
+);
+app.use(express.json({ limit: '1mb' }));
 
 app.use('/api/leads', leadsRoutes);
 

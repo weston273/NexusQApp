@@ -99,35 +99,16 @@ type FetchHealthStatusResult = {
   activeEndpointUrl: string | null;
 };
 
-const DEFAULT_WORKFLOW_E_STATUS_URL = "https://n8n-k7j4.onrender.com/webhook/health-status";
-
-function readViteEnv(key: string) {
-  const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env;
-  const value = env?.[key];
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function uniqueNonEmpty(values: Array<string | null | undefined>) {
-  const out: string[] = [];
-  for (const value of values) {
-    const trimmed = String(value ?? "").trim();
-    if (!trimmed) continue;
-    if (!out.includes(trimmed)) out.push(trimmed);
-  }
-  return out;
-}
-
-const HEALTH_URLS = uniqueNonEmpty([
-  readViteEnv("VITE_WORKFLOW_E_STATUS_URL"),
-  readViteEnv("VITE_WORKFLOW_E_STATUS_FALLBACK_URL"),
-  DEFAULT_WORKFLOW_E_STATUS_URL,
-]);
-
 const NOMINAL_REFRESH_SEC = 45;
 const INCIDENT_REFRESH_SEC = 15;
 const HEALTHY_CYCLES_TO_RECOVER = 3;
 const FRESHNESS_STALE_BADGE_MINUTES = 20;
 const SUPABASE_URL = String(import.meta.env.VITE_SUPABASE_URL ?? "");
+const SUPABASE_ANON_KEY = String(import.meta.env.VITE_SUPABASE_ANON_KEY ?? "");
+const WORKFLOW_E_PROXY_URL = SUPABASE_URL
+  ? `${SUPABASE_URL.replace(/\/+$/, "")}/functions/v1/workflow-e-proxy`
+  : "";
+const HEALTH_URLS = WORKFLOW_E_PROXY_URL ? [WORKFLOW_E_PROXY_URL] : [];
 
 const HEALTH_LOG_STORAGE_KEY = "nexusq-health-log-history-v1";
 const HEALTH_SERVICE_STORAGE_KEY = "nexusq-health-services-v1";
@@ -300,14 +281,6 @@ function isHttpsUrl(url: string) {
     return new URL(url).protocol === "https:";
   } catch {
     return false;
-  }
-}
-
-function hostFromUrl(url: string) {
-  try {
-    return new URL(url).host;
-  } catch {
-    return url;
   }
 }
 
@@ -581,11 +554,21 @@ async function fetchWithTimeout(url: string, ms = 12000) {
   const t = setTimeout(() => ctrl.abort(), ms);
 
   try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token ?? null;
     const bust = url.includes("?") ? "&" : "?";
     const finalUrl = `${url}${bust}t=${Date.now()}`;
+    const headers: Record<string, string> = {};
+    if (SUPABASE_ANON_KEY) {
+      headers.apikey = SUPABASE_ANON_KEY;
+    }
+    if (accessToken) {
+      headers.Authorization = `Bearer ${accessToken}`;
+    }
 
     const res = await fetch(finalUrl, {
       method: "GET",
+      headers,
       signal: ctrl.signal,
       mode: "cors",
       cache: "no-store",
@@ -646,12 +629,18 @@ async function probeEndpoint(url: string, index: number) {
 }
 
 async function fetchHealthStatus(clientId: string | null): Promise<FetchHealthStatusResult> {
+  if (!HEALTH_URLS.length) {
+    throw new HealthFetchError(
+      "Workflow E proxy URL is not configured. Set VITE_SUPABASE_URL first.",
+      []
+    );
+  }
   const urls = HEALTH_URLS.map((url) => appendClientIdQuery(url, clientId));
   const probes = await Promise.all(urls.map((url, index) => probeEndpoint(url, index)));
   const okResult = probes.find((entry) => entry.response?.ok);
 
   if (!okResult || !okResult.response) {
-    const reasons = probes.map((entry) => `${entry.probe.url}: ${entry.probe.error ?? "Unreachable"}`);
+    const reasons = probes.map((entry) => `${entry.probe.label}: ${entry.probe.error ?? "Unreachable"}`);
     throw new HealthFetchError(`Health endpoint unreachable. ${reasons.join(" | ")}`, probes.map((entry) => entry.probe));
   }
 
@@ -660,7 +649,7 @@ async function fetchHealthStatus(clientId: string | null): Promise<FetchHealthSt
     data = await parseHealthPayloadResponse(okResult.response);
   } catch (error: any) {
     throw new HealthFetchError(
-      `Health endpoint payload unreadable (${hostFromUrl(okResult.probe.url)}). ${error?.message || "Invalid response format."}`,
+      `Health endpoint payload unreadable. ${error?.message || "Invalid response format."}`,
       probes.map((entry) => entry.probe)
     );
   }
@@ -671,7 +660,7 @@ async function fetchHealthStatus(clientId: string | null): Promise<FetchHealthSt
 
   return {
     payload: {
-      ok: data.ok !== false,
+      ok: true,
       allOperational: !!data.allOperational,
       services: Array.isArray(data.services) ? data.services : [],
       logs: Array.isArray(data.logs) ? data.logs : [],

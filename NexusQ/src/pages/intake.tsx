@@ -8,8 +8,7 @@ import {
   Flame,
   Zap,
   Clock,
-  MapPin,
-  Calendar
+  MapPin
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,7 +17,9 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { withRetry } from '@/lib/network';
+import { supabase } from '@/lib/supabase';
+import { parseFunctionError } from '@/lib/access';
+import { useAuth } from '@/context/AuthProvider';
 
 type Step = 'service' | 'details' | 'contact' | 'success';
 
@@ -64,59 +65,9 @@ function makeReferenceId() {
 }
 
 const INTAKE_DRAFT_KEY = "nexusq.intake.draft";
-const WORKFLOW_A_DEFAULT_URL = "https://n8n-k7j4.onrender.com/webhook/lead-webhook";
-
-function readViteEnv(key: string) {
-  const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env;
-  const value = env?.[key];
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function uniqueNonEmpty(values: Array<string | null | undefined>) {
-  const out: string[] = [];
-  for (const value of values) {
-    const trimmed = String(value ?? "").trim();
-    if (!trimmed) continue;
-    if (!out.includes(trimmed)) out.push(trimmed);
-  }
-  return out;
-}
-
-async function parseWorkflowAResponse(res: Response) {
-  const text = (await res.text()).trim();
-  if (!text) return {};
-  try {
-    return JSON.parse(text) as { ok?: boolean; error?: string; message?: string; lead_id?: string; client_id?: string };
-  } catch {
-    return { message: text.slice(0, 220) };
-  }
-}
-
-async function postIntake(url: string, payload: Record<string, unknown>) {
-  const secret = readViteEnv("VITE_WORKFLOW_A_SECRET");
-  const ctrl = new AbortController();
-  const timeout = setTimeout(() => ctrl.abort(), 12000);
-  try {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (secret) {
-      headers["x-nexusq-secret"] = secret;
-    }
-    return await withRetry(
-      () =>
-        fetch(url, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(payload),
-          signal: ctrl.signal,
-        }),
-      { retries: 2, baseDelayMs: 350 }
-    );
-  } finally {
-    clearTimeout(timeout);
-  }
-}
 
 export function LeadIntake() {
+  const { clientId } = useAuth();
   const [step, setStep] = React.useState<Step>('service');
   const [submitting, setSubmitting] = React.useState(false);
   const [referenceId, setReferenceId] = React.useState<string>('');
@@ -182,7 +133,6 @@ export function LeadIntake() {
     } catch {
       // ignore invalid local draft
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   React.useEffect(() => {
@@ -258,6 +208,7 @@ export function LeadIntake() {
 
     const payload: Record<string, unknown> = {
       source: "nexusq-website",
+      client_id: clientId,
       service: formData.service,
       urgency: formData.urgency,
       address: formData.address,
@@ -272,42 +223,29 @@ export function LeadIntake() {
       reference_id: ref,
     };
 
-    const urls = uniqueNonEmpty([
-      readViteEnv("VITE_WORKFLOW_A_URL"),
-      readViteEnv("VITE_WORKFLOW_A_FALLBACK_URL"),
-      WORKFLOW_A_DEFAULT_URL,
-    ]);
-
     try {
-      let lastError = "Lead intake request failed.";
-
-      for (const url of urls) {
-        try {
-          const res = await postIntake(url, payload);
-          const data = await parseWorkflowAResponse(res);
-          if (res.ok && data.ok !== false) {
-            setReferenceId(ref);
-            setFormData((p) => ({ ...p, phone: phoneE164 })); // keep it consistent
-            setStep("success");
-            setErrors({});
-            localStorage.removeItem(INTAKE_DRAFT_KEY);
-            if (formData.address.trim()) {
-              const merged = [formData.address.trim(), ...recentAddresses.filter((addr) => addr !== formData.address.trim())].slice(0, 8);
-              setRecentAddresses(merged);
-              localStorage.setItem("nexusq.intake.addresses", JSON.stringify(merged));
-            }
-            toast.success("Service request sent.");
-            return;
-          }
-
-          const reason = data.error || data.message || `HTTP ${res.status}`;
-          lastError = `Lead intake failed at ${url}: ${reason}`;
-        } catch (error: any) {
-          lastError = `Lead intake failed at ${url}: ${error?.message || "Unknown network error"}`;
-        }
+      const { data, error } = await supabase.functions.invoke("workflow-a-proxy", {
+        body: payload,
+      });
+      if (error) {
+        throw new Error(await parseFunctionError(error));
+      }
+      if (!data?.ok) {
+        const message = typeof data?.error === "string" ? data.error : "Lead intake request failed.";
+        throw new Error(message);
       }
 
-      throw new Error(lastError);
+      setReferenceId(ref);
+      setFormData((p) => ({ ...p, phone: phoneE164 }));
+      setStep("success");
+      setErrors({});
+      localStorage.removeItem(INTAKE_DRAFT_KEY);
+      if (formData.address.trim()) {
+        const merged = [formData.address.trim(), ...recentAddresses.filter((addr) => addr !== formData.address.trim())].slice(0, 8);
+        setRecentAddresses(merged);
+        localStorage.setItem("nexusq.intake.addresses", JSON.stringify(merged));
+      }
+      toast.success("Service request sent.");
     } catch (error: any) {
       console.error("Failed to submit lead", error);
       toast.error(error?.message || "Something went wrong. Please try again.");

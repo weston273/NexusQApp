@@ -10,6 +10,12 @@ export function AuthCallbackPage() {
   React.useEffect(() => {
     const finishAuth = async () => {
       const params = new URLSearchParams(window.location.search);
+      const errorCode = params.get("error");
+      const errorDescription = params.get("error_description");
+      if (errorCode) {
+        setError(errorDescription || errorCode);
+        return;
+      }
       const code = params.get("code");
       if (!code) {
         navigate("/", { replace: true });
