@@ -6,7 +6,7 @@ type HealthProxyBody = {
   client_id?: string | null;
 };
 
-const DEFAULT_WORKFLOW_E_STATUS_URL = "https://n8n-k7j4.onrender.com/webhook/pipeline-update";
+const DEFAULT_WORKFLOW_E_STATUS_URL = "https://n8n-k7j4.onrender.com/webhook/health-status";
 
 function getEnv(name: string) {
   const value = Deno.env.get(name);
