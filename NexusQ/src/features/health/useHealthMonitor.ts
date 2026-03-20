@@ -89,7 +89,7 @@ export function useHealthMonitor() {
           if (fallbackServices.length) {
             baseServices = fallbackServices;
             supplementalLogs.push(
-              addSystemLog("Workflow E returned no services. Loaded fallback snapshot from automation_health.", "warning")
+              addSystemLog("Workflow E health-ping returned no service payload. Loaded fallback snapshot from automation_health.", "warning")
             );
           }
         } catch (fallbackError: unknown) {
@@ -156,7 +156,8 @@ export function useHealthMonitor() {
       setError(null);
       setLastRefreshAt(new Date());
     } catch (runError: unknown) {
-      setError(getErrorMessage(runError, "Failed to fetch health"));
+      const errorMessage = getErrorMessage(runError, "Failed to fetch health");
+      setError(errorMessage);
 
       if (runError instanceof HealthFetchError) {
         setNetworkSnapshot({
@@ -173,7 +174,35 @@ export function useHealthMonitor() {
         }));
       }
 
-      appendLogs([addSystemLog(`Health refresh failed: ${getErrorMessage(runError, "Unknown error")}`, "warning")]);
+      if (clientId) {
+        try {
+          const fallbackServices = await fetchAutomationHealthFallback(clientId);
+          if (fallbackServices.length) {
+            const fallbackSnapshot = buildWorkflowServices(fallbackServices, previousServicesRef.current);
+            setPayload(null);
+            setServiceSnapshot(fallbackSnapshot);
+            persistServices(fallbackSnapshot);
+            previousServicesRef.current = fallbackSnapshot;
+            appendLogs([
+              addSystemLog(`Health refresh failed: ${errorMessage}`, "warning"),
+              addSystemLog("Loaded automation_health fallback after probe failure.", "warning"),
+            ]);
+            setLastRefreshAt(new Date());
+            return;
+          }
+        } catch (fallbackError: unknown) {
+          appendLogs([
+            addSystemLog(`Health refresh failed: ${errorMessage}`, "warning"),
+            addSystemLog(
+              `Fallback recovery failed: ${getErrorMessage(fallbackError, "Unknown error")}`,
+              "warning"
+            ),
+          ]);
+          return;
+        }
+      }
+
+      appendLogs([addSystemLog(`Health refresh failed: ${errorMessage}`, "warning")]);
     } finally {
       setLoading(false);
     }

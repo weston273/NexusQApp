@@ -20,7 +20,7 @@ export function HealthActivityLogCard({
       <CardHeader>
         <CardTitle className="text-lg">Real-time Activity Log</CardTitle>
         <CardDescription>
-          Full retained event history from Workflow E and Health UI ({logs.length} entries).
+          Full retained event history from Workflow E health-ping probes, automation snapshots, and Health UI ({logs.length} entries).
         </CardDescription>
       </CardHeader>
       <CardContent className="flex-1 min-h-0">

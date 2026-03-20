@@ -43,15 +43,19 @@ export function HealthNetworkCard({ networkSnapshot }: { networkSnapshot: Networ
         </div>
 
         <div className="space-y-2">
-          {networkSnapshot.endpoints.map((endpoint) => (
-            <div key={endpoint.url} className="rounded-xl border bg-background/70 p-3">
+          {networkSnapshot.endpoints.map((endpoint) => {
+            const reachableWithoutPayload = endpoint.ok && (endpoint.statusCode ?? 0) >= 400;
+            const badgeLabel = endpoint.ok ? (reachableWithoutPayload ? "Reachable" : "Healthy") : "Issue";
+
+            return (
+              <div key={endpoint.url} className="rounded-xl border bg-background/70 p-3">
               <div className="flex items-center justify-between gap-2">
                 <div className="text-xs font-semibold">{endpoint.label}</div>
                 <Badge
                   variant={endpoint.ok ? "outline" : "destructive"}
                   className="text-[9px] font-bold uppercase tracking-widest"
                 >
-                  {endpoint.ok ? "Healthy" : "Issue"}
+                  {badgeLabel}
                 </Badge>
               </div>
               <div className="mt-2 text-[11px] text-muted-foreground break-all">{endpoint.url}</div>
@@ -76,8 +80,9 @@ export function HealthNetworkCard({ networkSnapshot }: { networkSnapshot: Networ
                 </div>
               </div>
               {endpoint.error ? <div className="mt-2 text-[10px] text-status-warning">{endpoint.error}</div> : null}
-            </div>
-          ))}
+              </div>
+            );
+          })}
         </div>
       </CardContent>
     </Card>

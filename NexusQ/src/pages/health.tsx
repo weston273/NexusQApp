@@ -36,7 +36,7 @@ export function Health() {
       <div className="flex flex-col gap-3">
         <PageHeader
           title="System Health"
-          description="Operational status of Nexus Q automation layers (live from Workflow E)."
+          description="Operational status of Nexus Q automation layers (live from Workflow E health-ping reachability and automation snapshots)."
           lastUpdatedLabel={`Last updated: ${lastRefreshAt ? lastRefreshAt.toLocaleTimeString() : "Not yet synced"}`}
         />
         <HealthToolbar
