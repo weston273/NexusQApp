@@ -2,13 +2,18 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 
+const projectRoot = path.resolve(__dirname);
+
 export default defineConfig({
+  root: projectRoot,
+  envDir: projectRoot,
   plugins: [react()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      '@': path.resolve(projectRoot, './src'),
     },
   },
+  publicDir: path.resolve(projectRoot, './public'),
   build: {
     rollupOptions: {
       output: {

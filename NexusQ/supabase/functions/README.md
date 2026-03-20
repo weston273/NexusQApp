@@ -8,7 +8,7 @@ This folder contains secure server-side logic for workspace access keys, onboard
 - Force uppercase.
 - Keep dashes.
 
-Frontend claim flow uses the same normalization rule before calling `public.claim_client_access(raw_key)`.
+Frontend workspace-linking flow uses the same normalization rule before calling the `workspace-bootstrap` edge function.
 
 ## Functions
 

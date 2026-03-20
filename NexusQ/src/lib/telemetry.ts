@@ -1,3 +1,9 @@
+import {
+  clearPersistedTelemetryEvents,
+  readPersistedTelemetryEvents,
+  writePersistedTelemetryEvents,
+} from "@/lib/persistence/telemetry";
+
 type TelemetryEvent = {
   type: "error" | "ui";
   message: string;
@@ -5,23 +11,12 @@ type TelemetryEvent = {
   at: string;
 };
 
-const TELEMETRY_KEY = "nexusq.telemetry.events";
-
 function readEvents(): TelemetryEvent[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(TELEMETRY_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as TelemetryEvent[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  return readPersistedTelemetryEvents();
 }
 
 function writeEvents(events: TelemetryEvent[]) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(TELEMETRY_KEY, JSON.stringify(events.slice(0, 200)));
+  writePersistedTelemetryEvents(events);
 }
 
 export function trackTelemetry(event: Omit<TelemetryEvent, "at">) {
@@ -36,4 +31,8 @@ export function trackTelemetry(event: Omit<TelemetryEvent, "at">) {
 
 export function getTelemetryEvents() {
   return readEvents();
+}
+
+export function clearTelemetryEvents() {
+  clearPersistedTelemetryEvents();
 }

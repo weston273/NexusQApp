@@ -1,5 +1,6 @@
 import React from "react";
 import type { Session, User } from "@supabase/supabase-js";
+import { toast } from "sonner";
 import {
   getCurrentSession,
   signOutCurrentUser,
@@ -34,13 +35,17 @@ type AuthContextValue = {
 const AuthContext = React.createContext<AuthContextValue | undefined>(undefined);
 
 function selectClientContext(rows: UserAccessRow[], preferredClientId?: string | null) {
-  const selected = pickPrimaryAccessRow(rows, preferredClientId ?? getStoredActiveClientId());
+  const requestedClientId = preferredClientId ?? getStoredActiveClientId();
+  const selected = pickPrimaryAccessRow(rows, requestedClientId);
+  const recoveredFromClientId =
+    requestedClientId && selected?.client_id && selected.client_id !== requestedClientId ? requestedClientId : null;
+
   if (selected?.client_id) {
     setStoredActiveClientId(selected.client_id);
-    return selected;
+    return { selected, recoveredFromClientId };
   }
   setStoredActiveClientId(null);
-  return null;
+  return { selected: null, recoveredFromClientId };
 }
 
 async function loadUserProfileAndAccess(userId: string) {
@@ -106,11 +111,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const selected = selectClientContext(loadedAccessRows);
+      const { selected, recoveredFromClientId } = selectClientContext(loadedAccessRows);
       setProfile(loadedProfile);
       setAccessRows(loadedAccessRows);
       setClientId(selected?.client_id ?? null);
       setRole(selected?.role ?? null);
+      if (recoveredFromClientId) {
+        toast.info("Your previous workspace was unavailable, so NexusQ switched to another linked workspace.");
+      }
       setProfileReady(true);
       setAccessReady(true);
       setAuthError(errorMessage);
@@ -127,11 +135,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const { data, error } = await fetchCurrentUserAccessRows(user.id);
     const rows = data ?? [];
-    const selected = selectClientContext(rows, clientId);
+    const { selected, recoveredFromClientId } = selectClientContext(rows, clientId);
 
     setAccessRows(rows);
     setClientId(selected?.client_id ?? null);
     setRole(selected?.role ?? null);
+    if (recoveredFromClientId) {
+      toast.info("Workspace access changed. NexusQ switched you to a currently linked workspace.");
+    }
     setAccessReady(true);
     setAuthError(error?.message ?? null);
     setLoading(false);

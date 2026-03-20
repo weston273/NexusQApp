@@ -1,11 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
+import { getAppConfig } from "@/lib/config";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error("Missing Supabase configuration. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.");
-}
+const { supabaseUrl, supabaseAnonKey } = getAppConfig();
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {

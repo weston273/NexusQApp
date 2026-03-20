@@ -21,15 +21,17 @@ export function WorkspaceAccessKeys({
   authError: string | null;
 }) {
   return (
-    <AccessKeyForm
-      clientId={clientId}
-      role={role}
-      accessLoading={accessLoading}
-      sessionReady={sessionReady}
-      profileReady={profileReady}
-      accessReady={accessReady}
-      userId={userId}
-      authError={authError}
-    />
+    <div id="workspace-access-keys">
+      <AccessKeyForm
+        clientId={clientId}
+        role={role}
+        accessLoading={accessLoading}
+        sessionReady={sessionReady}
+        profileReady={profileReady}
+        accessReady={accessReady}
+        userId={userId}
+        authError={authError}
+      />
+    </div>
   );
 }

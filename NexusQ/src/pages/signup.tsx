@@ -68,7 +68,9 @@ export function SignupPage() {
       <Card className="w-full max-w-md border-none card-surface-a">
         <CardHeader>
           <CardTitle>Create account</CardTitle>
-          <CardDescription>Sign up with email/password or continue with Google.</CardDescription>
+          <CardDescription>
+            Sign up with email/password or continue with Google. After account creation, you will create or join a workspace.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <form className="space-y-4" onSubmit={onSubmit}>

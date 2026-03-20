@@ -1,5 +1,6 @@
 import type { AuthChangeEvent, Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
+import { getAppConfig } from "@/lib/config";
 
 type AuthStateChangeListener = (event: AuthChangeEvent, session: Session | null) => void;
 
@@ -15,11 +16,11 @@ function buildRedirectUrl(path: string, explicitValue?: string) {
 }
 
 export function getOAuthRedirectUrl() {
-  return buildRedirectUrl("/auth/callback", import.meta.env.VITE_AUTH_REDIRECT_URL as string | undefined);
+  return buildRedirectUrl("/auth/callback", getAppConfig().authRedirectUrl);
 }
 
 export function getPasswordResetRedirectUrl() {
-  return buildRedirectUrl("/reset-password", import.meta.env.VITE_PASSWORD_RESET_REDIRECT_URL as string | undefined);
+  return buildRedirectUrl("/reset-password", getAppConfig().passwordResetRedirectUrl);
 }
 
 export async function signUpWithEmail(params: {

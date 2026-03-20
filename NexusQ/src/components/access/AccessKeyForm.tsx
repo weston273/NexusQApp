@@ -9,12 +9,18 @@ import { Badge } from "@/components/ui/badge";
 import { GeneratedKeyModal } from "@/components/access/GeneratedKeyModal";
 import {
   createClientAccessKey,
-  isAccessAdminRole,
   listClientAccessKeys,
   parseAccessError,
   setClientAccessKeyActive,
 } from "@/lib/access";
 import type { AccessRole, ClientAccessKeyRow } from "@/lib/access";
+import { getErrorMessage } from "@/lib/errors";
+import {
+  canCreateOwnerAccessKeys,
+  canManageWorkspaceAccess,
+  getAccessRoleLabel,
+  getAccessRoleSummary,
+} from "@/lib/permissions";
 
 type AccessKeyFormProps = {
   clientId: string;
@@ -81,8 +87,8 @@ export function AccessKeyForm({
 }: AccessKeyFormProps) {
   const accessContextLoaded = sessionReady && profileReady && accessReady && !accessLoading;
   const roleKnown = role !== null;
-  const canManage = accessContextLoaded && roleKnown && isAccessAdminRole(role);
-  const isOwner = role === "owner";
+  const canManage = accessContextLoaded && roleKnown && canManageWorkspaceAccess(role);
+  const isOwner = canCreateOwnerAccessKeys(role);
   const allowedRoles = React.useMemo<AccessRole[]>(
     () => (isOwner ? ["viewer", "admin", "owner"] : ["viewer", "admin"]),
     [isOwner]
@@ -190,8 +196,8 @@ export function AccessKeyForm({
       setConfirmOwnerKey(false);
       toast.success("Access key created.");
       await loadKeys();
-    } catch (createError: any) {
-      setError(createError?.message || "Failed to create access key.");
+    } catch (createError: unknown) {
+      setError(getErrorMessage(createError, "Failed to create access key."));
     } finally {
       setCreating(false);
     }
@@ -209,8 +215,8 @@ export function AccessKeyForm({
       await setClientAccessKeyActive(key.id, nextActive);
       toast.success(nextActive ? "Access key reactivated." : "Access key revoked.");
       await loadKeys();
-    } catch (toggleError: any) {
-      setError(toggleError?.message || "Failed to update access key status.");
+    } catch (toggleError: unknown) {
+      setError(getErrorMessage(toggleError, "Failed to update access key status."));
     }
   };
 
@@ -270,11 +276,23 @@ export function AccessKeyForm({
         ) : null}
 
         {!canManage ? (
-          <div className="rounded-md border bg-background p-3 text-sm text-muted-foreground">
-            You do not have permission to manage keys for this workspace. Owners/Admins only.
+          <div className="rounded-md border bg-background p-3 text-sm text-muted-foreground space-y-2">
+            <div className="font-medium text-foreground">
+              {getAccessRoleLabel(role)} access does not include workspace key management.
+            </div>
+            <div>{getAccessRoleSummary(role)}</div>
+            <div>Ask an owner or admin to create or revoke workspace access keys when you need to onboard another operator.</div>
           </div>
         ) : (
           <>
+            <div className="rounded-md border bg-background p-3 space-y-1">
+              <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Current access level
+              </div>
+              <div className="text-sm font-medium">{getAccessRoleLabel(role)}</div>
+              <div className="text-xs text-muted-foreground">{getAccessRoleSummary(role)}</div>
+            </div>
+
             {isOwner ? (
               <div className="rounded-md border bg-background p-3 space-y-2">
                 <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -405,7 +423,7 @@ export function AccessKeyForm({
               ) : keys.length ? (
                 <div className="space-y-2">
                   {keys.map((key) => {
-                    const ownerKeyLocked = key.role === "owner" && !isOwner;
+                    const ownerKeyLocked = key.role === "owner" && !canCreateOwnerAccessKeys(role);
                     const actionLabel = key.is_active ? "Deactivate" : "Reactivate";
                     return (
                       <div key={key.id} className="rounded-md border bg-background p-3 space-y-2">

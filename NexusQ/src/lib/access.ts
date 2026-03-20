@@ -1,5 +1,7 @@
 import type { PostgrestError } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
+import { getPersistedActiveClientId, setPersistedActiveClientId } from "@/lib/persistence/workspace";
+import { canManageWorkspaceAccess } from "@/lib/permissions";
 
 export type AccessRole = "owner" | "admin" | "viewer";
 
@@ -35,11 +37,6 @@ export type ClientAccessKeyRow = {
   created_at: string;
 };
 
-export type ClaimClientAccessResult = {
-  client_id: string;
-  role: AccessRole;
-};
-
 export type WorkspaceBootstrapAction = "create_workspace" | "join_workspace";
 
 export type WorkspaceBootstrapResult = {
@@ -55,8 +52,6 @@ export type WorkspaceBootstrapResult = {
   } | null;
 };
 
-const ACTIVE_CLIENT_STORAGE_KEY = "nexusq.active-client-id";
-
 function roleWeight(role: AccessRole) {
   if (role === "owner") return 3;
   if (role === "admin") return 2;
@@ -64,21 +59,15 @@ function roleWeight(role: AccessRole) {
 }
 
 export function isAccessAdminRole(role: AccessRole | null | undefined) {
-  return role === "owner" || role === "admin";
+  return canManageWorkspaceAccess(role);
 }
 
 export function getStoredActiveClientId() {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(ACTIVE_CLIENT_STORAGE_KEY);
+  return getPersistedActiveClientId();
 }
 
 export function setStoredActiveClientId(clientId: string | null) {
-  if (typeof window === "undefined") return;
-  if (clientId) {
-    localStorage.setItem(ACTIVE_CLIENT_STORAGE_KEY, clientId);
-    return;
-  }
-  localStorage.removeItem(ACTIVE_CLIENT_STORAGE_KEY);
+  setPersistedActiveClientId(clientId);
 }
 
 export function pickPrimaryAccessRow(rows: UserAccessRow[], preferredClientId?: string | null) {
@@ -217,22 +206,6 @@ async function invokeWorkspaceBootstrap(payload: Record<string, unknown>): Promi
   }
 
   return result;
-}
-
-export async function claimWorkspaceAccess(rawKey: string): Promise<ClaimClientAccessResult> {
-  const normalized = normalizeAccessKey(rawKey);
-  if (!normalized) {
-    throw new Error("Access key is required.");
-  }
-
-  const { data, error } = await supabase.rpc("claim_client_access", { raw_key: normalized });
-  if (error) throw new Error(parseAccessError(error));
-
-  const record = (Array.isArray(data) ? data[0] : data) as ClaimClientAccessResult | null;
-  if (!record?.client_id || !record?.role) {
-    throw new Error("Access key was accepted, but no client link was returned.");
-  }
-  return record;
 }
 
 export async function createWorkspaceForCurrentUser(params: {

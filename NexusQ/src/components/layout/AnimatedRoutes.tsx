@@ -8,6 +8,7 @@ const Dashboard = React.lazy(() => import("@/pages/dashboard").then((m) => ({ de
 const Pipeline = React.lazy(() => import("@/pages/pipeline").then((m) => ({ default: m.Pipeline })));
 const LeadIntake = React.lazy(() => import("@/pages/intake").then((m) => ({ default: m.LeadIntake })));
 const Health = React.lazy(() => import("@/pages/health").then((m) => ({ default: m.Health })));
+const NotificationsPage = React.lazy(() => import("@/pages/notifications").then((m) => ({ default: m.NotificationsPage })));
 const SettingsPage = React.lazy(() => import("@/pages/settings").then((m) => ({ default: m.SettingsPage })));
 
 const pageVariants = {
@@ -69,6 +70,14 @@ function AnimatedRoutes() {
             element={
               <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration: 0.25, ease: "easeOut" }}>
                 <Health />
+              </motion.div>
+            }
+          />
+          <Route
+            path="/notifications"
+            element={
+              <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration: 0.25, ease: "easeOut" }}>
+                <NotificationsPage />
               </motion.div>
             }
           />

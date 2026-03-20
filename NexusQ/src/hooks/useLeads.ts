@@ -3,41 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { triggerProgress } from "@/lib/progressBus";
 import { loadAppSettings, SETTINGS_CHANGED_EVENT } from "@/lib/userSettings";
 import { useAuth } from "@/context/AuthProvider";
-
-export type Lead = {
-  id: string;
-  client_id: string | null;
-  name: string | null;
-  phone: string | null;
-  email: string | null;
-  source: string | null;
-  status: string | null;
-  score: number | null;
-  created_at: string;
-  last_contacted_at: string | null;
-  service: string | null;
-  urgency: string | null;
-  address: string | null;
-};
-
-export type LeadEvent = {
-  id: string;
-  client_id: string | null;
-  lead_id: string | null;
-  event_type: string;
-  payload_json: any;
-  created_at: string;
-};
-
-export type PipelineRow = {
-  id: string;
-  client_id: string | null;
-  lead_id: string | null;
-  stage: string;
-  value: number | null;
-  probability: number | null;
-  updated_at: string | null;
-};
+import type { Lead, LeadEvent, PipelineRow } from "@/lib/leads";
 
 type LeadsSnapshot = {
   leads: Lead[];

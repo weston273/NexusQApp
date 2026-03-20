@@ -20,8 +20,39 @@ import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { parseFunctionError } from '@/lib/access';
 import { useAuth } from '@/context/AuthProvider';
+import { getErrorMessage } from '@/lib/errors';
+import {
+  clearIntakeDraft,
+  loadIntakeDraft,
+  loadRecentIntakeAddresses,
+  saveIntakeDraft,
+  saveRecentIntakeAddresses,
+  type IntakeDraft,
+} from '@/lib/persistence/intake';
 
 type Step = 'service' | 'details' | 'contact' | 'success';
+
+type LeadIntakeFormData = {
+  service: string;
+  urgency: string;
+  address: string;
+  propertyType: string;
+  issueDetails: string;
+  name: string;
+  phone: string;
+  email: string;
+};
+
+const INITIAL_FORM_DATA: LeadIntakeFormData = {
+  service: '',
+  urgency: 'standard',
+  address: '',
+  propertyType: 'residential',
+  issueDetails: '',
+  name: '',
+  phone: '',
+  email: '',
+};
 
 const services = [
   { id: 'plumbing', label: 'Plumbing', icon: Droplets, description: 'Leaks, pipes, and drains' },
@@ -64,7 +95,18 @@ function makeReferenceId() {
   return `QX-${a}-${b}`;
 }
 
-const INTAKE_DRAFT_KEY = "nexusq.intake.draft";
+function parseDraftValue(value: unknown): IntakeDraft<Step, LeadIntakeFormData> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (!record.formData || typeof record.formData !== "object" || Array.isArray(record.formData)) return null;
+
+  return {
+    step: record.step === "service" || record.step === "details" || record.step === "contact" || record.step === "success" ? record.step : "service",
+    formData: { ...INITIAL_FORM_DATA, ...(record.formData as Partial<LeadIntakeFormData>) },
+    countryCode: typeof record.countryCode === "string" ? record.countryCode : "US",
+    phoneNational: typeof record.phoneNational === "string" ? record.phoneNational : "",
+  };
+}
 
 export function LeadIntake() {
   const { clientId } = useAuth();
@@ -82,18 +124,7 @@ export function LeadIntake() {
   );
   const [phoneNational, setPhoneNational] = React.useState<string>('');
 
-  const [formData, setFormData] = React.useState({
-    service: '',
-    urgency: 'standard',
-    address: '',
-    propertyType: 'residential',
-    issueDetails: '',
-    // preferredDate: '', // optional
-    // notes: '', // optional
-    name: '',
-    phone: '',   // kept for payload (set to E.164 on submit)
-    email: '', 
-  });
+  const [formData, setFormData] = React.useState<LeadIntakeFormData>(INITIAL_FORM_DATA);
 
   // derive validation for phone
   const phoneDigits = React.useMemo(() => cleanNationalDigits(phoneNational), [phoneNational]);
@@ -103,47 +134,35 @@ export function LeadIntake() {
   const phoneValid = phoneLen >= selectedCountry.minLen && phoneLen <= selectedCountry.maxLen;
 
   React.useEffect(() => {
-    try {
-      const raw = localStorage.getItem("nexusq.intake.addresses");
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as string[];
-      if (Array.isArray(parsed)) setRecentAddresses(parsed.slice(0, 8));
-    } catch {
-      // ignore
-    }
+    setRecentAddresses(loadRecentIntakeAddresses().slice(0, 8));
   }, []);
 
   React.useEffect(() => {
+    const parsed = loadIntakeDraft(parseDraftValue);
+    if (!parsed) return;
+
+    if (parsed.formData) {
+      setFormData((prev) => ({ ...prev, ...parsed.formData }));
+    }
+    if (parsed.countryCode) setCountryCode(parsed.countryCode);
+    if (parsed.phoneNational) setPhoneNational(parsed.phoneNational);
+    if (parsed.step && parsed.step !== "success") setStep(parsed.step);
     try {
-      const raw = localStorage.getItem(INTAKE_DRAFT_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as Partial<{
-        step: Step;
-        formData: typeof formData;
-        countryCode: string;
-        phoneNational: string;
-      }>;
-      if (parsed.formData) {
-        setFormData((prev) => ({ ...prev, ...parsed.formData }));
-      }
-      if (parsed.countryCode) setCountryCode(parsed.countryCode);
-      if (parsed.phoneNational) setPhoneNational(parsed.phoneNational);
-      if (parsed.step && parsed.step !== "success") setStep(parsed.step);
       toast.info("Recovered your intake draft.");
     } catch {
-      // ignore invalid local draft
+      // ignore toast/display issues
     }
   }, []);
 
   React.useEffect(() => {
     if (step === "success") return;
-    const draft = {
+    const draft: IntakeDraft<Step, LeadIntakeFormData> = {
       step,
       formData,
       countryCode,
       phoneNational,
     };
-    localStorage.setItem(INTAKE_DRAFT_KEY, JSON.stringify(draft));
+    saveIntakeDraft(draft);
   }, [countryCode, formData, phoneNational, step]);
 
   const progress = {
@@ -239,16 +258,16 @@ export function LeadIntake() {
       setFormData((p) => ({ ...p, phone: phoneE164 }));
       setStep("success");
       setErrors({});
-      localStorage.removeItem(INTAKE_DRAFT_KEY);
+      clearIntakeDraft();
       if (formData.address.trim()) {
         const merged = [formData.address.trim(), ...recentAddresses.filter((addr) => addr !== formData.address.trim())].slice(0, 8);
         setRecentAddresses(merged);
-        localStorage.setItem("nexusq.intake.addresses", JSON.stringify(merged));
+        saveRecentIntakeAddresses(merged);
       }
       toast.success("Service request sent.");
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Failed to submit lead", error);
-      toast.error(error?.message || "Something went wrong. Please try again.");
+      toast.error(getErrorMessage(error, "Something went wrong. Please try again."));
     } finally {
       setSubmitting(false);
     }
@@ -589,22 +608,13 @@ export function LeadIntake() {
                 className="w-full font-bold h-12"
                 onClick={() => {
                   setFormData({
-                    service: '',
-                    urgency: 'standard',
-                    address: '',
-                    propertyType: 'residential',
-                    issueDetails: '',
-                    // preferredDate: '',
-                    // notes: '',
-                    name: '',
-                    phone: '',
-                    email: '',
+                    ...INITIAL_FORM_DATA,
                   });
                   setReferenceId('');
                   setCountryCode('US');
                   setPhoneNational('');
                   setErrors({});
-                  localStorage.removeItem(INTAKE_DRAFT_KEY);
+                  clearIntakeDraft();
                   setStep('service');
                 }}
               >

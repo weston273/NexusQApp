@@ -14,6 +14,7 @@ import {
   UserPlus,
   LayoutDashboard,
   BarChart3,
+  Inbox,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -41,24 +42,15 @@ import {
   CommandShortcut,
   CommandSeparator,
 } from "@/components/ui/command";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useLeads } from "@/hooks/useLeads";
 import { loadAppSettings, SETTINGS_CHANGED_EVENT } from "@/lib/userSettings";
 import { useAuth } from "@/context/AuthProvider";
 import { getUserDisplayName } from "@/lib/auth";
-
-const LAST_NOTIFICATION_READ_KEY = "nexusq.notifications.lastReadAt";
-
-function eventSeverity(eventType: string): "high" | "medium" | "low" {
-  const t = (eventType || "").toLowerCase();
-  if (t.includes("failed") || t.includes("error")) return "high";
-  if (t.includes("status") || t.includes("quoted") || t.includes("booked")) return "medium";
-  return "low";
-}
-
-function eventLabel(eventType: string) {
-  return (eventType || "unknown").replace(/_/g, " ");
-}
+import { getErrorMessage } from "@/lib/errors";
+import { getAccessRoleLabel } from "@/lib/permissions";
+import { NotificationCenterPanel } from "@/features/notifications/components/NotificationCenterPanel";
+import { useNotificationCenterContext } from "@/features/notifications/NotificationCenterProvider";
 
 function isTypingTarget(target: EventTarget | null) {
   const node = target as HTMLElement | null;
@@ -75,21 +67,17 @@ export function Header({
 }) {
   const navigate = useNavigate();
   const { user, profile, role, clientId, accessRows, setActiveClientId, signOut } = useAuth();
-  const { leads, events, loading, error, lastLoadedAt } = useLeads();
+  const { leads, loading, error, lastLoadedAt } = useLeads();
+  const { notificationsEnabled, unreadCount } = useNotificationCenterContext();
   const [commandOpen, setCommandOpen] = React.useState(false);
   const [notificationsOpen, setNotificationsOpen] = React.useState(false);
   const [clockTick, setClockTick] = React.useState(() => Date.now());
-  const [lastReadAt, setLastReadAt] = React.useState<number>(() => {
-    const raw = localStorage.getItem(LAST_NOTIFICATION_READ_KEY);
-    const n = Number(raw);
-    return Number.isFinite(n) ? n : 0;
-  });
   const [settingsState, setSettingsState] = React.useState(() => loadAppSettings());
   const goKeyAtRef = React.useRef<number>(0);
 
   const displayName = profile?.full_name || settingsState.operatorName || getUserDisplayName(user);
   const displayEmail = profile?.email || user?.email || settingsState.operatorEmail || "";
-  const displayRole = role || "viewer";
+  const displayRole = getAccessRoleLabel(role);
   const initials = (displayName || "OP")
     .split(" ")
     .filter(Boolean)
@@ -103,6 +91,7 @@ export function Header({
       p: "/pipeline",
       i: "/intake",
       h: "/health",
+      n: "/notifications",
       s: "/settings",
     };
 
@@ -144,13 +133,6 @@ export function Header({
       window.clearInterval(tickId);
     };
   }, [navigate]);
-
-  React.useEffect(() => {
-    if (!notificationsOpen) return;
-    const now = Date.now();
-    setLastReadAt(now);
-    localStorage.setItem(LAST_NOTIFICATION_READ_KEY, String(now));
-  }, [notificationsOpen]);
 
   const trustMeta = React.useMemo(() => {
     const source = "Supabase Realtime";
@@ -206,27 +188,7 @@ export function Header({
       ? "bg-status-error"
       : "bg-status-info";
 
-  const unreadCount = React.useMemo(() => {
-    if (!settingsState.pushNotifications) return 0;
-    return events.filter((event) => {
-      const ts = new Date(event.created_at).getTime();
-      return Number.isFinite(ts) && ts > lastReadAt;
-    }).length;
-  }, [events, lastReadAt, settingsState.pushNotifications]);
-
   const topLeads = React.useMemo(() => leads.slice(0, 8), [leads]);
-  const recentEvents = React.useMemo(() => {
-    const seen = new Set<string>();
-    const out: typeof events = [];
-    for (const event of events) {
-      const key = `${event.event_type}|${event.lead_id ?? "na"}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push(event);
-      if (out.length >= 12) break;
-    }
-    return out;
-  }, [events]);
 
   const navigateAndClose = (path: string) => {
     navigate(path);
@@ -238,8 +200,8 @@ export function Header({
       await signOut();
       navigate("/login", { replace: true });
       toast.success("Signed out.");
-    } catch (error: any) {
-      toast.error(error?.message || "Sign-out failed. Please try again.");
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Sign-out failed. Please try again."));
     }
   };
 
@@ -355,7 +317,7 @@ export function Header({
                   aria-label="Notifications"
                 >
                   <Bell className="h-4 w-4" />
-                  {settingsState.pushNotifications && unreadCount > 0 ? (
+                  {notificationsEnabled && unreadCount > 0 ? (
                     <span className="absolute top-2.5 right-2.5 h-2 w-2 rounded-full bg-status-success animate-pulse" />
                   ) : null}
                 </Button>
@@ -399,7 +361,7 @@ export function Header({
                 </Avatar>
                 <div className="hidden md:flex flex-col text-left overflow-hidden">
                   <span className="text-xs font-semibold leading-none truncate max-w-[80px]">{displayName || "Operator"}</span>
-                  <span className="text-[10px] text-muted-foreground truncate max-w-[80px] capitalize">{displayRole}</span>
+                  <span className="text-[10px] text-muted-foreground truncate max-w-[80px]">{displayRole}</span>
                 </div>
                 <ChevronDown className="h-3.5 w-3.5 text-muted-foreground group-hover:text-foreground transition-colors hidden md:block" />
               </button>
@@ -425,7 +387,7 @@ export function Header({
                     >
                       {clientId === access.client_id ? <Check className="h-4 w-4" /> : <span className="h-4 w-4" />}
                       <span className="truncate text-xs">{access.client_id.slice(0, 8)}</span>
-                      <span className="ml-auto text-[10px] uppercase text-muted-foreground">{access.role}</span>
+                      <span className="ml-auto text-[10px] uppercase text-muted-foreground">{getAccessRoleLabel(access.role)}</span>
                     </DropdownMenuItem>
                   ))}
                 </>
@@ -483,6 +445,11 @@ export function Header({
               System Health
               <CommandShortcut>G H</CommandShortcut>
             </CommandItem>
+            <CommandItem onSelect={() => navigateAndClose("/notifications")}>
+              <Inbox className="h-4 w-4" />
+              Notifications
+              <CommandShortcut>G N</CommandShortcut>
+            </CommandItem>
             <CommandItem onSelect={() => navigateAndClose("/settings")}>
               <Settings className="h-4 w-4" />
               Settings
@@ -495,7 +462,7 @@ export function Header({
           <CommandGroup heading="Recent Leads">
             {topLeads.length ? (
               topLeads.map((lead) => (
-                <CommandItem key={lead.id} onSelect={() => navigateAndClose("/pipeline")}>
+                <CommandItem key={lead.id} onSelect={() => navigateAndClose(`/pipeline?lead=${encodeURIComponent(lead.id)}`)}>
                   <User className="h-4 w-4" />
                   <span>{lead.name || lead.phone || "Unknown Lead"}</span>
                   <CommandShortcut>{(lead.status || "new").toUpperCase()}</CommandShortcut>
@@ -510,57 +477,17 @@ export function Header({
 
       <Dialog open={notificationsOpen} onOpenChange={setNotificationsOpen}>
         <DialogContent className="!left-auto !right-0 !top-0 !translate-x-0 !translate-y-0 h-screen w-[92vw] max-w-md rounded-none border-l p-0">
-          <DialogHeader className="p-4 pb-2 border-b">
+          <DialogHeader className="p-4 pb-3 border-b">
             <DialogTitle className="text-base flex items-center justify-between">
               Notifications
               <Badge variant="outline" className="text-[10px]">
                 {unreadCount} unread
               </Badge>
             </DialogTitle>
-            <DialogDescription className="text-xs">Live activity updates from lead events and workflows.</DialogDescription>
           </DialogHeader>
 
-          {!settingsState.pushNotifications ? (
-            <div className="m-4 rounded-md border p-3 text-xs text-muted-foreground">Push notifications are disabled in settings.</div>
-          ) : null}
-
-          <div className="max-h-[calc(100vh-96px)] overflow-y-auto p-3 space-y-2">
-            {recentEvents.length ? (
-              recentEvents.map((event) => (
-                <button
-                  key={event.id}
-                  onClick={() => {
-                    navigate("/pipeline");
-                    setNotificationsOpen(false);
-                  }}
-                  className="w-full rounded-lg border bg-card p-3 text-left hover:bg-muted/30 transition-colors"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <div className="text-xs font-semibold capitalize">{eventLabel(event.event_type)}</div>
-                      <Badge
-                        variant="outline"
-                        className={
-                          eventSeverity(event.event_type) === "high"
-                            ? "text-[9px] border-status-error/40 text-status-error"
-                            : eventSeverity(event.event_type) === "medium"
-                            ? "text-[9px] border-status-warning/40 text-status-warning"
-                            : "text-[9px] border-status-info/40 text-status-info"
-                        }
-                      >
-                        {eventSeverity(event.event_type)}
-                      </Badge>
-                    </div>
-                    <div className="text-[10px] text-muted-foreground">{new Date(event.created_at).toLocaleTimeString()}</div>
-                  </div>
-                  <div className="mt-1 text-[11px] text-muted-foreground line-clamp-2">
-                    {event.lead_id ? `Lead #${event.lead_id.slice(0, 8)}` : "System event"}
-                  </div>
-                </button>
-              ))
-            ) : (
-              <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">No notifications yet.</div>
-            )}
+          <div className="max-h-[calc(100vh-84px)] overflow-y-auto p-4">
+            <NotificationCenterPanel compact showViewAll onAfterNavigate={() => setNotificationsOpen(false)} />
           </div>
         </DialogContent>
       </Dialog>

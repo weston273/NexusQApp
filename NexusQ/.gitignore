@@ -1,5 +1,12 @@
+# Dependencies / build output
+node_modules/
+dist/
+
 # Env files (never commit)
 .env
 .env.*
 !.env.example
 .env.local
+
+# Local tooling noise
+npm-debug.log*

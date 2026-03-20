@@ -13,6 +13,7 @@ import {
   Activity,
   BarChart3,
   Timer,
+  Inbox,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -28,26 +29,28 @@ import type { AppSettings } from "@/lib/userSettings";
 import { getTelemetryEvents } from "@/lib/telemetry";
 import { useAuth } from "@/context/AuthProvider";
 import { WorkspaceAccessKeys } from "@/pages/settings/WorkspaceAccessKeys";
+import { WorkspaceSummaryCard } from "@/pages/settings/WorkspaceSummaryCard";
+import { LocalRecoveryCard } from "@/pages/settings/LocalRecoveryCard";
+import { useAppTheme } from "@/lib/theme";
 
 const navCards = [
   { label: "Dashboard", icon: LayoutDashboard, path: "/" },
   { label: "Pipeline", icon: BarChart3, path: "/pipeline" },
   { label: "Lead Intake", icon: UserPlus, path: "/intake" },
   { label: "System Health", icon: Activity, path: "/health" },
+  { label: "Notifications", icon: Inbox, path: "/notifications" },
   { label: "Settings", icon: Settings2, path: "/settings" },
 ];
 
 export function SettingsPage() {
   const navigate = useNavigate();
-  const { clientId, role, loading, sessionReady, profileReady, accessReady, user, authError } = useAuth();
+  const { clientId, role, accessRows, loading, sessionReady, profileReady, accessReady, user, authError } = useAuth();
+  const { setTheme } = useAppTheme();
   const [settings, setSettings] = React.useState<AppSettings>(() => loadAppSettings());
   const [telemetry, setTelemetry] = React.useState(() => getTelemetryEvents().slice(0, 8));
 
-  React.useEffect(() => {
-    document.documentElement.classList.toggle("dark", settings.theme === "dark");
-  }, [settings.theme]);
-
   const saveSettings = () => {
+    setTheme(settings.theme);
     saveAppSettings(settings);
     toast.success("Settings saved");
     setTelemetry(getTelemetryEvents().slice(0, 8));
@@ -112,6 +115,7 @@ export function SettingsPage() {
                 <option value="/pipeline">Pipeline</option>
                 <option value="/intake">Lead Intake</option>
                 <option value="/health">System Health</option>
+                <option value="/notifications">Notifications</option>
                 <option value="/settings">Settings</option>
               </select>
             </div>
@@ -127,7 +131,10 @@ export function SettingsPage() {
             <Button
               variant={settings.theme === "light" ? "default" : "outline"}
               className="h-10 w-full justify-start gap-2"
-              onClick={() => setSettings((prev) => ({ ...prev, theme: "light" }))}
+              onClick={() => {
+                setTheme("light");
+                setSettings((prev) => ({ ...prev, theme: "light" }));
+              }}
             >
               <Sun className="h-4 w-4" />
               Light Theme
@@ -135,7 +142,10 @@ export function SettingsPage() {
             <Button
               variant={settings.theme === "dark" ? "default" : "outline"}
               className="h-10 w-full justify-start gap-2"
-              onClick={() => setSettings((prev) => ({ ...prev, theme: "dark" }))}
+              onClick={() => {
+                setTheme("dark");
+                setSettings((prev) => ({ ...prev, theme: "dark" }));
+              }}
             >
               <Moon className="h-4 w-4" />
               Dark Theme
@@ -202,20 +212,6 @@ export function SettingsPage() {
                 inputMode="numeric"
               />
             </div>
-            <div className="flex items-center justify-between rounded-lg border bg-background p-3">
-              <div className="flex items-center gap-2">
-                <Activity className="h-4 w-4 text-primary" />
-                <span className="text-sm font-medium">Dashboard Time Range</span>
-              </div>
-              <select
-                value={settings.dashboardRange}
-                onChange={(e) => setSettings((prev) => ({ ...prev, dashboardRange: e.target.value as "7d" | "30d" }))}
-                className="h-8 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                <option value="7d">Last 7 days</option>
-                <option value="30d">Last 30 days</option>
-              </select>
-            </div>
           </CardContent>
         </Card>
 
@@ -240,6 +236,8 @@ export function SettingsPage() {
         </Card>
       </div>
 
+      <WorkspaceSummaryCard clientId={clientId} role={role} workspaceCount={accessRows.length} />
+
       {clientId ? (
         <WorkspaceAccessKeys
           clientId={clientId}
@@ -252,6 +250,8 @@ export function SettingsPage() {
           authError={authError}
         />
       ) : null}
+
+      <LocalRecoveryCard clientId={clientId} onTelemetryCleared={() => setTelemetry([])} />
 
       <Card className="border-none bg-muted/20">
         <CardHeader>

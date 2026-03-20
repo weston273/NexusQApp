@@ -5,6 +5,7 @@ import {
   BarChart3, 
   UserPlus, 
   Activity, 
+  Bell,
   Settings,
   Menu,
   X,
@@ -15,12 +16,15 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import Logo from '@/assets/logo/nexus-q-logo.png';
 import { useAuth } from '@/context/AuthProvider';
+import { useAppTheme } from '@/lib/theme';
+import { getAccessRoleLabel } from '@/lib/permissions';
 
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
   { icon: BarChart3, label: 'Pipeline', path: '/pipeline' },
   { icon: UserPlus, label: 'Lead Intake', path: '/intake' },
   { icon: Activity, label: 'System Health', path: '/health' },
+  { icon: Bell, label: 'Notifications', path: '/notifications' },
 ];
 
 export function Sidebar({
@@ -31,7 +35,7 @@ export function Sidebar({
   setIsOpen: React.Dispatch<React.SetStateAction<boolean>>;
 }) {
   const { profile, user, role } = useAuth();
-  const [theme, setTheme] = React.useState<'light' | 'dark'>('light');
+  const { theme, toggleTheme } = useAppTheme();
   const displayName = profile?.full_name || user?.email || "Operator";
   const initials = displayName
     .split(" ")
@@ -39,22 +43,6 @@ export function Sidebar({
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() ?? "")
     .join("");
-
-  // Load saved theme
-  React.useEffect(() => {
-    const saved = localStorage.getItem('theme') as 'light' | 'dark' | null;
-    if (saved) {
-      setTheme(saved);
-      document.documentElement.classList.toggle('dark', saved === 'dark');
-    }
-  }, []);
-
-  const toggleTheme = () => {
-    const next = theme === 'dark' ? 'light' : 'dark';
-    setTheme(next);
-    localStorage.setItem('theme', next);
-    document.documentElement.classList.toggle('dark', next === 'dark');
-  };
 
   return (
     <>
@@ -151,7 +139,7 @@ export function Sidebar({
             <div className="flex flex-col">
               <span className="text-xs font-semibold truncate max-w-[120px]">{displayName}</span>
               <span className="text-[10px] text-muted-foreground">
-                {(role || "viewer").toUpperCase()}
+                {getAccessRoleLabel(role).toUpperCase()}
               </span>
             </div>
           </div>

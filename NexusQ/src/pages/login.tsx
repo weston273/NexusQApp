@@ -48,7 +48,9 @@ export function LoginPage() {
       <Card className="w-full max-w-md border-none card-surface-a">
         <CardHeader>
           <CardTitle>Login</CardTitle>
-          <CardDescription>Sign in to access your NexusQ workspace.</CardDescription>
+          <CardDescription>
+            Sign in to access NexusQ. If this account is not linked yet, you will be guided to create or join a workspace next.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <form className="space-y-4" onSubmit={onSubmit}>

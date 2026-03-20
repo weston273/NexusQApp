@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { Sidebar } from './sidebar'
 import { Header } from './header'
+import { NotificationCenterProvider } from '@/features/notifications/NotificationCenterProvider'
 
 interface ShellProps {
   children: React.ReactNode
@@ -9,18 +10,20 @@ interface ShellProps {
 export function Shell({ children }: ShellProps) {
   const [sidebarOpen, setSidebarOpen] = React.useState(false)
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
+    <NotificationCenterProvider>
+      <div className="flex h-screen overflow-hidden bg-background">
+        <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
 
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <Header onToggleSidebar={() => setSidebarOpen(prev => !prev)} />
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <Header onToggleSidebar={() => setSidebarOpen(prev => !prev)} />
 
-        <main className="flex-1 overflow-y-auto p-4 md:p-8">
-          <div className="mx-auto max-w-7xl animate-fade-in-up">
-            {children}
-          </div>
-        </main>
+          <main className="flex-1 overflow-y-auto p-4 md:p-8">
+            <div className="mx-auto max-w-7xl animate-fade-in-up">
+              {children}
+            </div>
+          </main>
+        </div>
       </div>
-    </div>
+    </NotificationCenterProvider>
   )
 }
