@@ -113,6 +113,7 @@ Notes:
 - Workflow A and Workflow E now depend on a real `clients.client_key` column. Apply database migrations before importing workflow revisions that select `client_key`.
 - New workspaces now receive a generated `client_key` automatically through the database bootstrap path.
 - Frontend lead intake is proxy-first again. A direct webhook fallback is only available in local development when `VITE_WORKFLOW_A_DEV_FALLBACK_URL` is set.
+- Frontend health monitoring is proxy-only. Browser code now reaches Workflow E through `workflow-e-proxy` instead of direct webhook URLs.
 
 ## Production Safeguards Added
 
