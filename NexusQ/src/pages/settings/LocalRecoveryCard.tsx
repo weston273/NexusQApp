@@ -2,7 +2,8 @@ import { BellOff, RefreshCcw, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { clearIntakeDraft } from "@/lib/persistence/intake";
+import { clearStoredHealthState } from "@/features/health/cache";
+import { clearIntakeDraft, clearRecentIntakeAddresses } from "@/lib/persistence/intake";
 import { clearNotificationReadState } from "@/lib/persistence/notifications";
 import { clearTelemetryEvents } from "@/lib/telemetry";
 
@@ -24,7 +25,8 @@ export function LocalRecoveryCard({ clientId, onTelemetryCleared }: LocalRecover
           className="h-auto min-h-14 justify-start gap-3 py-3 text-left"
           onClick={() => {
             clearIntakeDraft();
-            toast.success("Saved intake draft cleared from this browser.");
+            clearRecentIntakeAddresses();
+            toast.success("Saved intake draft and recent addresses cleared from this browser.");
           }}
         >
           <RefreshCcw className="h-4 w-4 shrink-0" />
@@ -53,9 +55,10 @@ export function LocalRecoveryCard({ clientId, onTelemetryCleared }: LocalRecover
           variant="outline"
           className="h-auto min-h-14 justify-start gap-3 py-3 text-left"
           onClick={() => {
+            clearStoredHealthState();
             clearTelemetryEvents();
             onTelemetryCleared();
-            toast.success("Client-side telemetry history cleared.");
+            toast.success("Client-side diagnostics and health cache cleared.");
           }}
         >
           <ShieldAlert className="h-4 w-4 shrink-0" />

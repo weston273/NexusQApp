@@ -174,7 +174,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAuthError(errorMessage);
       setLoading(false);
     },
-    []
+    [clearSensitiveStateForTransition]
   );
 
   const refreshAccess = React.useCallback(async () => {
@@ -183,21 +183,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAuthError(null);
     setAccessReady(false);
 
-      const { data, error } = await fetchCurrentUserAccessRows(user.id);
-      const rows = data ?? [];
-      const { selected, recoveredFromClientId } = selectClientContext(rows, clientId);
+    const { data, error } = await fetchCurrentUserAccessRows(user.id);
+    const rows = data ?? [];
+    const { selected, recoveredFromClientId } = selectClientContext(rows, clientId);
 
-      clearSensitiveStateForTransition(user.id, selected?.client_id ?? null);
-      setAccessRows(rows);
-      setClientId(selected?.client_id ?? null);
-      setRole(selected?.role ?? null);
+    clearSensitiveStateForTransition(user.id, selected?.client_id ?? null);
+    setAccessRows(rows);
+    setClientId(selected?.client_id ?? null);
+    setRole(selected?.role ?? null);
     if (recoveredFromClientId) {
       toast.info("Workspace access changed. NexusQ switched you to a currently linked workspace.");
     }
     setAccessReady(true);
     setAuthError(error?.message ?? null);
     setLoading(false);
-  }, [clientId, user?.id]);
+  }, [clientId, clearSensitiveStateForTransition, user?.id]);
 
   const signOut = React.useCallback(async () => {
     setLoading(true);

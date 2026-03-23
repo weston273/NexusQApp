@@ -52,19 +52,25 @@ export function useHealthMonitor() {
   const previousServicesRef = React.useRef<HealthService[]>(serviceSnapshot);
   const healthyCyclesRef = React.useRef(0);
   const adaptiveIntervalRef = React.useRef<number>(nominalRefreshSec);
+  const nominalRefreshSecRef = React.useRef(nominalRefreshSec);
 
   React.useEffect(() => {
+    nominalRefreshSecRef.current = nominalRefreshSec;
+  }, [nominalRefreshSec]);
+
+  React.useEffect(() => {
+    const nextNominalRefreshSec = nominalRefreshSecRef.current;
     previousServicesRef.current = [];
     healthyCyclesRef.current = 0;
-    adaptiveIntervalRef.current = nominalRefreshSec;
-    setAdaptiveIntervalSec(nominalRefreshSec);
+    adaptiveIntervalRef.current = nextNominalRefreshSec;
+    setAdaptiveIntervalSec(nextNominalRefreshSec);
     setPayload(null);
     setError(null);
     setLastRefreshAt(null);
     setLogHistory(readStoredLogs());
     setServiceSnapshot(readStoredServices());
     setNetworkSnapshot(createInitialNetworkSnapshot(HEALTH_URLS));
-  }, [clientId, nominalRefreshSec]);
+  }, [clientId]);
 
   React.useEffect(() => {
     if (adaptiveIntervalRef.current !== INCIDENT_REFRESH_SEC) {
