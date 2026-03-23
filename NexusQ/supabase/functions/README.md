@@ -50,14 +50,20 @@ Frontend workspace-linking flow uses the same normalization rule before calling 
 
 - `workflow-a-proxy`
   - Verifies caller auth token.
-  - Optionally verifies workspace membership when `client_id` is provided.
+  - Requires `client_id` or `client_key`.
+  - Resolves and validates tenant context server-side.
+  - If both `client_id` and `client_key` are provided, they must refer to the same client.
+  - Verifies caller has active workspace membership before forwarding.
+  - Forwards canonical `client_id` and `client_key` to n8n.
   - Resolves Workflow A URL from `WORKFLOW_A_URL` (preferred), then `WORKFLOW_A_WEBHOOK_URL`, then `WORKFLOW_A_FALLBACK_URL`.
   - Injects `x-nexusq-secret` server-side when `NEXUSQ_WORKFLOW_A_SECRET` is configured.
   - Returns normalized JSON to frontend.
 
 - `workflow-e-proxy`
   - Verifies caller auth token.
-  - Optionally verifies workspace membership when `client_id` is provided.
+  - Requires `client_id` or `client_key`.
+  - Resolves and validates tenant context server-side.
+  - Verifies caller has active workspace membership before forwarding.
   - Resolves Workflow E URL from `WORKFLOW_E_STATUS_URL` (preferred), then `WORKFLOW_E_WEBHOOK_URL`, then `WORKFLOW_E_STATUS_FALLBACK_URL`.
   - Returns normalized JSON health payload to frontend.
 
@@ -99,3 +105,15 @@ If running locally:
 ```bash
 supabase functions serve --env-file supabase/functions/.env.local
 ```
+
+## Multi-client rollout order
+
+Before importing workflow versions that query `clients.client_key`:
+
+1. Apply the latest database migrations, including:
+   - `20260320170000_multi_client_tenant_hardening.sql`
+   - `20260321090000_client_key_bootstrap_contract.sql`
+2. Deploy `workflow-a-proxy` and `workflow-e-proxy`.
+3. Import the updated n8n workflow JSONs.
+
+If step 1 is skipped, Workflow A will fail with `column clients.client_key does not exist`.

@@ -1,0 +1,1344 @@
+{
+  "name": "C",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "twilio-reply",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "41291d3a-2fad-4212-a49d-c6cfb9c3517f",
+      "name": "Webhook (Twilio Reply)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -880,
+        80
+      ],
+      "webhookId": "98e82ea1-f9c4-48e3-b02a-275cb22eaee1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const b = $json.body ?? $json;\n// Twilio typically sends form-encoded fields: From, To, Body\nconst fromRaw = (b.From ?? b.from ?? '').toString();\nconst toRaw   = (b.To   ?? b.to   ?? '').toString();\nconst bodyTxt = (b.Body ?? b.body ?? b.message ?? '').toString();\n\n// basic normalization (remove spaces)\nconst from = fromRaw.replace(/\\s+/g,'');\nconst to   = toRaw.replace(/\\s+/g,'');\n\nreturn [{\n  from, to,\n  message: bodyTxt,\n  raw: b,\n}];"
+      },
+      "id": "f343017d-df0a-40c4-b660-204a577a4009",
+      "name": "Extract Twilio Fields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -656,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{'https://peenmmujciouzulfoykq.supabase.co/rest/v1/leads?phone=eq.' + encodeURIComponent($json.from) + '&select=id,client_id,status,phone,clients!inner(phone,timezone)&clients.phone=eq.' + encodeURIComponent($json.to) + '&order=last_contacted_at.desc.nullslast,created_at.desc&limit=2'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5OTAyMDksImV4cCI6MjA4NDU2NjIwOX0.gF7JDAOiQC5M7JetScBDGmIfPOMz2p5DIqe-MjFoNXs"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5OTAyMDksImV4cCI6MjA4NDU2NjIwOX0.gF7JDAOiQC5M7JetScBDGmIfPOMz2p5DIqe-MjFoNXs"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9f2a6619-3f22-48bf-8acf-2dbb661d7c4b",
+      "name": "Find Lead by Phone (From)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        -432,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{Array.isArray($json) ? $json.length : 0}}",
+              "operation": "equal",
+              "value2": 1
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b400cc15-78f5-4144-aaf6-90fbfcc0cd2e",
+      "name": "IF Lead Found",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -208,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const matches = Array.isArray($json) ? $json : [];\nconst tw = $node['Extract Twilio Fields'].json;\n\nif (matches.length !== 1) {\n  return [{\n    _unknownLead: true,\n    _ambiguousLead: matches.length > 1,\n    reason: matches.length > 1 ? 'Ambiguous lead match for inbound reply.' : 'No tenant-safe lead match for inbound reply.',\n    ...tw,\n  }];\n}\n\nconst lead = matches[0];\n\nreturn [{\n  client_id: lead.client_id,\n  lead_id: lead.id,\n  status: lead.status,\n  phone: lead.phone,\n  client_phone: lead?.clients?.phone ?? tw.to,\n  client_timezone: lead?.clients?.timezone ?? 'UTC',\n  message: tw.message,\n  from: tw.from,\n  to: tw.to,\n  raw: tw.raw,\n}];"
+      },
+      "id": "df8a01a6-fc97-4e0c-a1da-7e97d4674f70",
+      "name": "Normalize Reply (Lookup)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        32,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://peenmmujciouzulfoykq.supabase.co/rest/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            },
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "client_id",
+              "value": "={{$json.client_id}}"
+            },
+            {
+              "name": "lead_id",
+              "value": "={{$json.lead_id}}"
+            },
+            {
+              "name": "direction",
+              "value": "inbound"
+            },
+            {
+              "name": "channel",
+              "value": "sms"
+            },
+            {
+              "name": "body",
+              "value": "={{$json.message}}"
+            },
+            {
+              "name": "provider",
+              "value": "twilio"
+            },
+            {
+              "name": "provider_message_id",
+              "value": "={{$json.raw?.MessageSid || $json.raw?.SmsSid || null}}"
+            },
+            {
+              "name": "payload_json",
+              "value": "={{ { from:$json.from, to:$json.to, raw:$json.raw } }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9776d63f-9fd2-412d-90c0-f1682dcc853b",
+      "name": "Insert Message (inbound)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        224,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://peenmmujciouzulfoykq.supabase.co/rest/v1/lead_events",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            },
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "client_id",
+              "value": "={{$json.client_id}}"
+            },
+            {
+              "name": "lead_id",
+              "value": "={{$json.lead_id}}"
+            },
+            {
+              "name": "event_type",
+              "value": "reply_received"
+            },
+            {
+              "name": "payload_json",
+              "value": "={{ { message:$json.message, from:$json.from, to:$json.to, raw:$json.raw } }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "25e25996-abe1-44c4-b56c-878a6292b1bb",
+      "name": "Insert Event (reply_received)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        432,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{'https://peenmmujciouzulfoykq.supabase.co/rest/v1/leads?id=eq.' + $json.lead_id + '&client_id=eq.' + encodeURIComponent($json.client_id)}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            },
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5OTAyMDksImV4cCI6MjA4NDU2NjIwOX0.gF7JDAOiQC5M7JetScBDGmIfPOMz2p5DIqe-MjFoNXs"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5OTAyMDksImV4cCI6MjA4NDU2NjIwOX0.gF7JDAOiQC5M7JetScBDGmIfPOMz2p5DIqe-MjFoNXs"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "engaged"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "af7537ed-1f40-443a-88ca-2022ee3cc759",
+      "name": "Update Lead (engaged)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        656,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok:true } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "8efb4ef4-5069-4ecd-9ef3-aa970ecde09b",
+      "name": "Respond OK (Reply)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1056,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok:true, unknownLead:true } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "297c8a88-f3b9-437c-8ff7-35732b34b2f9",
+      "name": "Respond OK (Unknown Lead)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        960,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "hour": 10
+            }
+          ]
+        }
+      },
+      "id": "4276a64c-464a-4753-a4b7-e5c5311d9426",
+      "name": "Cron (Daily 10:00)",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        -880,
+        416
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const now = new Date();\nconst day1 = new Date(now.getTime() - 24*60*60*1000).toISOString();\nconst day3 = new Date(now.getTime() - 3*24*60*60*1000).toISOString();\nconst day7 = new Date(now.getTime() - 7*24*60*60*1000).toISOString();\nreturn [{ day1, day3, day7 }];"
+      },
+      "id": "9b03293c-3958-48a4-a12a-d219823cd32e",
+      "name": "Compute Follow-up Thresholds",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -656,
+        416
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{'https://peenmmujciouzulfoykq.supabase.co/rest/v1/leads?status=in.(contacted,new,qualifying,quoted)&client_id=not.is.null&phone=not.is.null&select=id,client_id,name,phone,last_contacted_at,status,clients!inner(phone,timezone)&clients.phone=not.is.null&limit=2000'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "894cf516-f732-404e-b238-965f43848891",
+      "name": "Fetch Open Leads",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        -432,
+        416
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const leads = $input.all().map(i => i.json);\nconst { day1, day3, day7 } = $node['Compute Follow-up Thresholds'].json;\n\nfunction dueBucket(last) {\n  if (!last) return null;           \n  const t = new Date(last).toISOString();\n  if (t <= day7) return 'day7';\n  if (t <= day3) return 'day3';\n  if (t <= day1) return 'day1';\n  return null;\n}\n\nreturn leads\n  .map(l => ({ ...l, bucket: dueBucket(l.last_contacted_at) }))\n  .filter(l => l.bucket && l.phone);"
+      },
+      "id": "44b1a18a-37b0-4f21-9a34-0f0f36cbaed7",
+      "name": "Filter Due Follow-ups",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -208,
+        416
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{'https://peenmmujciouzulfoykq.supabase.co/rest/v1/lead_events?lead_id=eq.' + $json.id + '&event_type=eq.reply_received&select=id&limit=1'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Authorization",
+              "value": "BearereyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9d526925-8098-4382-8acf-dc9b5c7485ad",
+      "name": "Check Reply Exists",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        0,
+        416
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "0efb369b-3bc6-4b8b-9747-5d4983f75f1c",
+              "leftValue": "{{ Array.isArray($json) && $json.length > 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {
+          "looseTypeValidation": true
+        }
+      },
+      "id": "f13b7f55-e934-4ec6-b697-6af77a4f43df",
+      "name": "IF Has Reply (Skip)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        224,
+        416
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{'https://peenmmujciouzulfoykq.supabase.co/rest/v1/lead_events?lead_id=eq.' + $item(0).$node[\"Filter Due Follow-ups\"].json.id + '&event_type=eq.followup_sent&select=id,payload_json,created_at&limit=2000'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b4ed022d-2bbd-450c-b93b-01ab67bffb94",
+      "name": "Check Followup Sent Events",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        432,
+        496
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const events = Array.isArray($json) ? $json : [];\nconst lead = $item(0).$node[\"Filter Due Follow-ups\"].json;\nconst bucket = lead.bucket;\n\nconst alreadySent = events.some(e => (e.payload_json && e.payload_json.bucket) === bucket);\n\nreturn [{\n  ...lead,\n  alreadySent,\n}];"
+      },
+      "id": "57e4bb65-e0a8-4690-a23c-701707b2fed9",
+      "name": "Flag Already Sent Bucket",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        656,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "ba8fd7f2-cf2f-4ca1-af5b-cc86210eb7f2",
+              "leftValue": "={{ $json.alreadySent }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "92654da1-bac5-44f5-84d6-a84919e61c46",
+      "name": "IF Already Sent Bucket (Skip)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        880,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Quiet hours rule per client timezone.\n// Block 20:00 - 07:00 local time.\nconst startQuiet = 20;\nconst endQuiet = 7;\nconst tz = $json.client_timezone || 'UTC';\n\nlet localHour;\ntry {\n  localHour = Number(new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hour12: false, timeZone: tz }).format(new Date()));\n} catch {\n  localHour = new Date().getUTCHours();\n}\n\nif (!Number.isFinite(localHour)) {\n  localHour = new Date().getUTCHours();\n}\n\nconst inQuiet = (localHour >= startQuiet) || (localHour < endQuiet);\n\nreturn [{\n  ...$json,\n  client_timezone: tz,\n  localHour,\n  inQuiet,\n  okToSend: !inQuiet,\n}];"
+      },
+      "id": "948a11ae-7965-49be-b0e0-68d68fbb5bf0",
+      "name": "Compute Quiet Hours",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.okToSend}}",
+              "operation": "isTrue"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "6da12e21-49af-46f0-93e6-a08718288945",
+      "name": "IF Ok To Send",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1312,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{'https://peenmmujciouzulfoykq.supabase.co/rest/v1/leads?id=eq.' + $json.id + '&client_id=eq.' + encodeURIComponent($json.client_id) + '&select=id,client_id,status,name,phone,clients(phone,timezone)&limit=1'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "591c2b44-cf2c-470e-8f21-1d6d42491f2d",
+      "name": "Recheck Lead Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1536,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const arr = Array.isArray($json) ? $json : [];\nconst lead = arr[0];\nconst prev = $node['Compute Quiet Hours'].json;\n\nif (!lead) return [{ _missingLead:true, ...prev }];\n\nreturn [{\n  ...prev,\n  status: lead.status,\n  name: lead.name,\n  phone: lead.phone,\n  client_id: lead.client_id,\n  client_phone: lead?.clients?.phone ?? prev.client_phone ?? null,\n  client_timezone: lead?.clients?.timezone ?? prev.client_timezone ?? 'UTC',\n  id: lead.id,\n}];"
+      },
+      "id": "032e48e9-00f6-4085-8799-4f3e977226a2",
+      "name": "Normalize Lead Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "6b8708d9-4903-4264-9660-e34dfe5d2ce2",
+              "leftValue": "={{ $json.okToSend }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ca2b81ed-ec47-4be5-936e-dda3bd7d49e4",
+      "name": "IF Status Still Open",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1984,
+        496
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const lead = $json;\nconst first = (lead.name || '').split(' ')[0] || 'there';\n\nconst templates = {\n  day1: `Hi ${first} — just checking in. Would you like a quick quote or to book an inspection today? Reply YES and we’ll schedule you.`,\n  day3: `Hi ${first} — following up. If you still need help, reply YES and we’ll get you booked in (takes 1 minute).`,\n  day7: `Hi ${first} — last check-in from my side. Reply YES if you want us to help, or NO if you’re sorted and I’ll close this.`,\n};\n\nconst followup_body = templates[lead.bucket] || templates.day1;\n\nreturn [{\n  ...lead,\n  followup_body,\n}];"
+      },
+      "id": "c40145e4-8289-46c4-aff2-4d29a8150d1a",
+      "name": "Build Follow-up Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2224,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.twilio.com/2010-04-01/Accounts/REPLACE_WITH_TWILIO_ACCOUNT_SID/Messages.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "To",
+              "value": "={{ $json.phone }}"
+            },
+            {
+              "name": "From",
+              "value": "={{ $json.client_phone || \"\" }}"
+            },
+            {
+              "name": "Body",
+              "value": "={{$json.followup_body}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "aeb1f030-2d84-442b-bb91-b9e9eae3067c",
+      "name": "Twilio - Send Follow-up",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        2448,
+        480
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "wEuQ3fWwApXuB7kg",
+          "name": "Twilio auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://peenmmujciouzulfoykq.supabase.co/rest/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            },
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "client_id",
+              "value": "={{$json.client_id}}"
+            },
+            {
+              "name": "lead_id",
+              "value": "={{$json.id}}"
+            },
+            {
+              "name": "direction",
+              "value": "outbound"
+            },
+            {
+              "name": "channel",
+              "value": "sms"
+            },
+            {
+              "name": "body",
+              "value": "={{$json.followup_body}}"
+            },
+            {
+              "name": "provider",
+              "value": "twilio"
+            },
+            {
+              "name": "provider_message_id",
+              "value": "={{$node['Twilio - Send Follow-up'].json.sid || null}}"
+            },
+            {
+              "name": "payload_json",
+              "value": "={{ { bucket:$json.bucket, localHour:$json.localHour, from:$json.client_phone, to:$json.phone, twilio:$node['Twilio - Send Follow-up'].json } }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b53fdeb4-2692-4816-8ebe-2fc52adafbdb",
+      "name": "Insert Message (outbound)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        2672,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://peenmmujciouzulfoykq.supabase.co/rest/v1/lead_events",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            },
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "client_id",
+              "value": "={{ $('Build Follow-up Message').item.json.client_id }}"
+            },
+            {
+              "name": "lead_id",
+              "value": "={{ $('Build Follow-up Message').item.json.id }}"
+            },
+            {
+              "name": "event_type",
+              "value": "followup_sent"
+            },
+            {
+              "name": "payload_json",
+              "value": "={{ { bucket:$json.bucket, channel:'sms', sent_at:$now, twilio_sid:$node['Twilio - Send Follow-up'].json.sid || null } }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "170aef18-8a81-4096-881f-6247d9dc8aa3",
+      "name": "Insert Event (followup_sent)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        2864,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{'https://peenmmujciouzulfoykq.supabase.co/rest/v1/leads?id=eq.' + $json.id}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            },
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5OTAyMDksImV4cCI6MjA4NDU2NjIwOX0.gF7JDAOiQC5M7JetScBDGmIfPOMz2p5DIqe-MjFoNXs"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5OTAyMDksImV4cCI6MjA4NDU2NjIwOX0.gF7JDAOiQC5M7JetScBDGmIfPOMz2p5DIqe-MjFoNXs"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "last_contacted_at",
+              "value": "={{$now}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fedae6bc-e64a-4bcf-83e1-77c6d97d3e6a",
+      "name": "Update Lead last_contacted_at",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        3040,
+        112
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://n8n-k7j4.onrender.com/webhook/health-ping",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"client_id\": \"={{$json.client_id || ''}}\",\n  \"workflow_name\": \"Workflow C - Follow Up Engine\",\n  \"status\": \"success\",\n  \"error_message\": null,\n  \"last_run_at\": \"={{new Date().toISOString()}}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        864,
+        144
+      ],
+      "id": "52e1489f-dd51-4a90-ada4-d2457f76d5e8",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://n8n-k7j4.onrender.com/webhook/health-ping",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"client_id\": \"{{$json.client_id || ''}}\",\n  \"workflow_name\": \"Workflow C - Follow Up Engine\",\n  \"status\": \"success\",\n  \"error_message\": null,\n  \"last_run_at\": \"{{new Date().toISOString()}}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        3312,
+        480
+      ],
+      "id": "00cbbafb-2d55-48da-9ee4-5fecfde64d02",
+      "name": "HTTP Request1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://n8n-k7j4.onrender.com/webhook/health-ping",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"client_id\": \"{{$json.client_id || ''}}\",\n  \"workflow_name\": \"C\",\n  \"status\": \"success\",\n  \"error_message\": null,\n  \"last_run_at\": \"={{new Date().toISOString()}}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        3072,
+        496
+      ],
+      "id": "df8dbe57-a822-41f8-a13d-bf65ed7bdceb",
+      "name": "HTTP Request2",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://n8n-k7j4.onrender.com/webhook/health-ping",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"client_id\": \"{{ $json.client_id || '' }}\",\n  \"workflow_name\": \"C\",\n  \"status\": \"ok\",\n  \"error_message\": null,\n  \"last_run_at\": \"{{ new Date().toISOString() }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        656,
+        -144
+      ],
+      "id": "aaeff799-e583-489c-97ff-ee1d8307f359",
+      "name": "HTTP Request3"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://n8n-k7j4.onrender.com/webhook/health-ping",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"client_id\": \"{{$json.client_id || ''}}\",\n  \"workflow_name\": \"Workflow C - Follow Up Engine\",\n  \"status\": \"ok\",\n  \"error_message\": null,\n  \"last_run_at\": \"{{new Date().toISOString()}}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        624,
+        320
+      ],
+      "id": "328e282d-5237-4631-b185-729b3aea7e47",
+      "name": "HTTP Request4"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://n8n-k7j4.onrender.com/webhook/health-ping",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"client_id\": \"{{$json.client_id || ''}}\",\n  \"workflow_name\": \"Workflow C - Follow Up Engine\",\n  \"status\": \"have already sent bucket\",\n  \"error_message\": null,\n  \"last_run_at\": \"{{new Date().toISOString()}}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1200,
+        336
+      ],
+      "id": "a1b17dfa-fbd7-4393-95e1-a60fb167a325",
+      "name": "HTTP Request5"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook (Twilio Reply)": {
+      "main": [
+        [
+          {
+            "node": "Extract Twilio Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Twilio Fields": {
+      "main": [
+        [
+          {
+            "node": "Find Lead by Phone (From)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Lead by Phone (From)": {
+      "main": [
+        [
+          {
+            "node": "IF Lead Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Lead Found": {
+      "main": [
+        [
+          {
+            "node": "Normalize Reply (Lookup)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP Request3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Reply (Lookup)": {
+      "main": [
+        [
+          {
+            "node": "Insert Message (inbound)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Message (inbound)": {
+      "main": [
+        [
+          {
+            "node": "Insert Event (reply_received)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Event (reply_received)": {
+      "main": [
+        [
+          {
+            "node": "Update Lead (engaged)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Lead (engaged)": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cron (Daily 10:00)": {
+      "main": [
+        [
+          {
+            "node": "Compute Follow-up Thresholds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute Follow-up Thresholds": {
+      "main": [
+        [
+          {
+            "node": "Fetch Open Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Open Leads": {
+      "main": [
+        [
+          {
+            "node": "Filter Due Follow-ups",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Due Follow-ups": {
+      "main": [
+        [
+          {
+            "node": "Check Reply Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Reply Exists": {
+      "main": [
+        [
+          {
+            "node": "IF Has Reply (Skip)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Has Reply (Skip)": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request4",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Followup Sent Events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Followup Sent Events": {
+      "main": [
+        [
+          {
+            "node": "Flag Already Sent Bucket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flag Already Sent Bucket": {
+      "main": [
+        [
+          {
+            "node": "IF Already Sent Bucket (Skip)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Already Sent Bucket (Skip)": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request5",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Compute Quiet Hours",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute Quiet Hours": {
+      "main": [
+        [
+          {
+            "node": "IF Ok To Send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Ok To Send": {
+      "main": [
+        [
+          {
+            "node": "Recheck Lead Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recheck Lead Status": {
+      "main": [
+        [
+          {
+            "node": "Normalize Lead Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Lead Status": {
+      "main": [
+        [
+          {
+            "node": "IF Status Still Open",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Status Still Open": {
+      "main": [
+        [
+          {
+            "node": "Build Follow-up Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Follow-up Message": {
+      "main": [
+        [
+          {
+            "node": "Twilio - Send Follow-up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Twilio - Send Follow-up": {
+      "main": [
+        [
+          {
+            "node": "Insert Message (outbound)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Message (outbound)": {
+      "main": [
+        [
+          {
+            "node": "Insert Event (followup_sent)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Event (followup_sent)": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request2": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request3": {
+      "main": [
+        [
+          {
+            "node": "Respond OK (Unknown Lead)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "b639de84-946c-4370-bc66-5cd01c8c2118",
+  "meta": {
+    "instanceId": "4bf975ace3f368cd438a6141ee2fc71975d8442c1b235cacd35cb39ef7b657f4"
+  },
+  "id": "miyf0wpHWem5aB0BxtJd4",
+  "tags": []
+}

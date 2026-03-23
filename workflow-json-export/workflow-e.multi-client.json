@@ -1,0 +1,797 @@
+{
+  "name": "E",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body ?? $json;\n\nconst client_id =\n  body.client_id ||\n  body.clientId ||\n  body.client ||\n  body.workspace_client_id ||\n  null;\n\nconst workflow_name = String(\n  body.workflow_name || body.workflowName || body.workflow || \"\"\n).trim();\n\nconst rawStatus = String(body.status || \"ok\").toLowerCase().trim();\n\nlet status = \"unknown\";\nif ([\"ok\", \"optimal\", \"healthy\", \"success\"].includes(rawStatus)) status = \"optimal\";\nelse if ([\"stale\", \"delayed\", \"warning\", \"warn\"].includes(rawStatus)) status = \"stale\";\nelse if ([\"degraded\", \"error\", \"fail\", \"failed\"].includes(rawStatus)) status = \"degraded\";\n\nconst explicitError = [body.error_message, body.error, body.message]\n  .find(value => typeof value === 'string' && value.trim()) ?? null;\n\nlet error_message = explicitError ? String(explicitError).trim().slice(0, 500) : null;\n\nif (!error_message && status === 'degraded') {\n  error_message = `${workflow_name || 'Workflow'} reported a degraded status without an explicit error message.`.slice(0, 500);\n} else if (!error_message && status === 'stale') {\n  error_message = `${workflow_name || 'Workflow'} heartbeat is stale.`.slice(0, 500);\n} else if (!error_message && status === 'unknown' && rawStatus) {\n  error_message = `${workflow_name || 'Workflow'} returned an unrecognized status: ${rawStatus}`.slice(0, 500);\n}\n\nlet last_run_at = new Date().toISOString();\nif (body.last_run_at) {\n  const d = new Date(body.last_run_at);\n  if (!Number.isNaN(d.getTime())) {\n    last_run_at = d.toISOString();\n  }\n}\n\nif (!client_id) {\n  return [{\n    _error: true,\n    message: \"client_id is required\",\n    received: body,\n  }];\n}\n\nif (!workflow_name) {\n  return [{\n    _error: true,\n    message: \"workflow_name is required\",\n    received: body,\n  }];\n}\n\nreturn [{\n  _error: false,\n  client_id,\n  workflow_name,\n  last_run_at,\n  status,\n  error_message,\n}];"
+      },
+      "id": "498e91bb-c20c-4172-86aa-64dff2015667",
+      "name": "Validate + Map Health",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7184,
+        6400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "ec7029c4-3649-4a9f-a648-0614e7c73fac",
+              "leftValue": "={{ $json._error === true }}",
+              "rightValue": "={{ 'true' }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "058df0f8-f15a-43ba-9056-a73ace1a9854",
+      "name": "IF Invalid Health Payload",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        7424,
+        6400
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type, Authorization"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "GET,POST,OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "id": "82f2f198-ab88-4f72-8e7c-a32127755915",
+      "name": "Respond (400)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        7632,
+        6272
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://peenmmujciouzulfoykq.supabase.co/rest/v1/automation_health?on_conflict=client_id,workflow_name' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "client_id",
+              "value": "={{$json.client_id}}"
+            },
+            {
+              "name": "workflow_name",
+              "value": "={{$json.workflow_name}}"
+            },
+            {
+              "name": "last_run_at",
+              "value": "={{$json.last_run_at}}"
+            },
+            {
+              "name": "status",
+              "value": "={{$json.status}}"
+            },
+            {
+              "name": "error_message",
+              "value": "={{$json.error_message}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c1445acb-46c9-4763-95ad-06daab9768bf",
+      "name": "Insert automation_health",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        7632,
+        6480
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type, Authorization"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "GET,POST,OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "id": "1136b4d3-b72f-4bda-9b1d-d6803600cd85",
+      "name": "Respond OK (Health)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        7888,
+        6480
+      ]
+    },
+    {
+      "parameters": {
+        "path": "health-status",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "34c1175c-84af-45c2-8821-838bc7e4e30b",
+      "name": "Webhook (Health Status)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        6944,
+        6832
+      ],
+      "webhookId": "c795a370-de73-4871-b2f5-6d875d716e49"
+    },
+    {
+      "parameters": {
+        "jsCode": "const q = $json.query ?? {};\nconst client_id = (q.client_id || q.clientId || '').toString().trim();\n\nif (!client_id) {\n  throw new Error('client_id is required');\n}\n\nreturn [{ client_id }];"
+      },
+      "id": "25e59dd2-3683-4f7d-a6ca-1a4ca05ff080",
+      "name": "Parse client_id",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7184,
+        6832
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://peenmmujciouzulfoykq.supabase.co/rest/v1/automation_health?client_id=eq.' + $json.client_id + '&select=workflow_name,last_run_at,status,error_message&order=last_run_at.desc&limit=200' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "addd09c0-bb35-4aa6-8446-dcbef1fb777e",
+      "name": "Get automation_health (recent)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        7424,
+        6816
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://peenmmujciouzulfoykq.supabase.co/rest/v1/daily_kpis?client_id=eq.' + $node['Parse client_id'].json.client_id + '&select=date,leads_count,responses_sent,booked_calls,quotes_sent,wins,losses&order=date.desc&limit=1' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "585e53ca-e7da-4639-877e-dc8b33e17e10",
+      "name": "Get daily_kpis (latest)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        7440,
+        7024
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Output format expected by frontend Health.tsx:\n// { ok, allOperational, services[], logs[], generated_at }\nfunction safeItems(nodeName) {\n  try {\n    const items = $items(nodeName);\n    return items?.[0]?.json ?? [];\n  } catch (e) {\n    return [];\n  }\n}\nconst healthRaw = safeItems('Get automation_health (recent)');\nconst kpiRaw = safeItems('Get daily_kpis (latest)');\n\nconst healthRows = Array.isArray(healthRaw) ? healthRaw : (Array.isArray(healthRaw.data) ? healthRaw.data : (healthRaw ? [healthRaw] : []));\n\nconst latestByWorkflow = {};\nfor (const r of healthRows) {\n  const name = r.workflow_name || 'unknown';\n  const prev = latestByWorkflow[name];\n  if (!prev) {\n    latestByWorkflow[name] = r;\n    continue;\n  }\n  const a = prev.last_run_at ? new Date(prev.last_run_at).getTime() : 0;\n  const b = r.last_run_at ? new Date(r.last_run_at).getTime() : 0;\n  if (b >= a) latestByWorkflow[name] = r;\n}\n\nconst now = Date.now();\nconst STALE_MINUTES = 90;\n\nfunction mapStatus(row, minutesSince) {\n  const s = String(row?.status || '').toLowerCase();\n  if (minutesSince == null) return 'unknown';\n  if (minutesSince > STALE_MINUTES) return 'stale';\n  if (s === 'error' || s === 'failed' || s === 'degraded') return 'degraded';\n  if (s === 'ok' || s === 'success' || s === 'optimal') return 'optimal';\n  if (s === 'warning' || s === 'warn' || s === 'stale' || s === 'delayed') return 'stale';\n  return 'unknown';\n}\n\nfunction deriveError(row, status, name) {\n  const explicit = [row?.error_message, row?.error, row?.message].find(value => typeof value === 'string' && value.trim());\n  if (explicit) return String(explicit).trim();\n  if (status === 'degraded') return `${name} reported a degraded status without an explicit error message.`;\n  if (status === 'stale') return `${name} heartbeat is stale.`;\n  return null;\n}\n\nconst services = Object.entries(latestByWorkflow)\n  .map(([name, r]) => {\n    const t = r.last_run_at ? new Date(r.last_run_at).getTime() : 0;\n    const minutes_since = t ? Math.round((now - t) / 60000) : null;\n    const status = mapStatus(r, minutes_since);\n\n    return {\n      name,\n      status,\n      last_run_at: r.last_run_at || null,\n      minutes_since,\n      error: deriveError(r, status, name),\n    };\n  })\n  .sort((a, b) => a.name.localeCompare(b.name));\n\nconst allOperational = services.length ? services.every(s => s.status === 'optimal') : false;\n\nconst logs = services\n  .map(s => ({\n    time: s.last_run_at,\n    event:\n      s.error ? s.error :\n      s.status === 'optimal' ? 'Heartbeat OK' :\n      s.status === 'stale' ? 'Heartbeat stale' :\n      s.status === 'degraded' ? 'Workflow error' :\n      'Unknown status',\n    source: s.name,\n    status:\n      s.status === 'optimal' ? 'success' :\n      (s.status === 'stale' || s.status === 'degraded') ? 'warning' :\n      'info',\n  }))\n  .sort((a, b) => (b.time ? new Date(b.time).getTime() : 0) - (a.time ? new Date(a.time).getTime() : 0))\n  .slice(0, 30);\n\nreturn [{\n  ok: true,\n  allOperational,\n  services,\n  logs,\n  generated_at: new Date().toISOString(),\n  latest_kpi: (Array.isArray(kpiRaw) && kpiRaw.length) ? kpiRaw[0] : null,\n}];"
+      },
+      "id": "f4e91abf-671b-4694-8cc7-f2ba0f54414b",
+      "name": "Build Health Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7984,
+        6816
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type, Authorization"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "GET,POST,OPTIONS"
+              }
+            ]
+          }
+        }
+      },
+      "id": "02fd20c3-3e41-4cc9-a393-ac39fca89388",
+      "name": "Respond OK (Status)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        8288,
+        6816
+      ]
+    },
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "mode": "everyHour",
+              "minute": 5
+            }
+          ]
+        }
+      },
+      "id": "e9a7b938-e59f-4d3f-a88e-9e24e672a36f",
+      "name": "Cron (Daily KPI)",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        6848,
+        7248
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://peenmmujciouzulfoykq.supabase.co/rest/v1/clients?status=eq.active&select=id,phone,timezone' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "03a20e57-7bec-4a95-8809-abea8dac803c",
+      "name": "Set client_id (daily)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        7088,
+        7248
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json;\nconst rows = Array.isArray(raw) ? raw : (Array.isArray(raw?.data) ? raw.data : (raw?.id ? [raw] : []));\n\nreturn rows\n  .filter(row => row?.id)\n  .map(row => ({\n    json: {\n      client_id: row.id,\n      client_phone: row.phone ?? null,\n      client_timezone: row.timezone ?? 'UTC',\n    }\n  }));"
+      },
+      "id": "6f0254ba-b233-41f3-bbd5-872580c644ba",
+      "name": "Compute Date Range",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7328,
+        7248
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://peenmmujciouzulfoykq.supabase.co/rest/v1/leads?client_id=eq.' + $json.client_id + '&created_at=gte.' + $json.start_iso + '&created_at=lt.' + $json.end_iso + '&select=id' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "4948e5b7-f68d-40f0-b830-fcea64f85bd5",
+      "name": "Get leads (today)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        7856,
+        7312
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://peenmmujciouzulfoykq.supabase.co/rest/v1/daily_kpis?on_conflict=client_id,date' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "de86d6b1-01d8-4c15-99c4-3c69f2556049",
+      "name": "Upsert daily_kpis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        8576,
+        7248
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "faa92741-a916-46f4-b76d-1a7be6d71635",
+      "name": "Merge (Health & KPI)",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [
+        7712,
+        6832
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "2ebbf2da-e09e-43a6-a840-89a2818c9a7a",
+      "name": "Merge (Append)",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [
+        8128,
+        7504
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const now = new Date();\nconst start = new Date(now);\nstart.setHours(0,0,0,0);\n\nconst end = new Date(start);\nend.setDate(end.getDate()+1);\n\nreturn [{\n  client_id: $json.client_id,\n  client_phone: $json.client_phone ?? null,\n  client_timezone: $json.client_timezone ?? 'UTC',\n  date: start.toISOString().split('T')[0],\n  start_iso: start.toISOString(),\n  end_iso: end.toISOString()\n}];"
+      },
+      "id": "fff0564b-a94a-4bb3-a7fc-9723e23029ed",
+      "name": "Compute Date Range1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7600,
+        7264
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://peenmmujciouzulfoykq.supabase.co/rest/v1/lead_events?client_id=eq.' + $json.client_id + '&created_at=gte.' + $json.start_iso + '&created_at=lt.' + $json.end_iso + '&select=event_type' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "15b16863-cfe7-45d1-b67d-53d9ed59eed3",
+      "name": "Get lead_events (today)1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        7872,
+        7504
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://peenmmujciouzulfoykq.supabase.co/rest/v1/pipeline?client_id=eq.' + $json.client_id + '&updated_at=gte.' + $json.start_iso + '&updated_at=lt.' + $json.end_iso + '&select=stage' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "be0c5577-51b3-4952-8608-b5ba7b9a6e8f",
+      "name": "Get pipeline (today)1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        7872,
+        7648
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "function safeItems(nodeName) {\n  try {\n    return $items(nodeName, 0, 0) || [];\n  } catch {\n    return [];\n  }\n}\n\nconst leads = safeItems('Get leads (today)');\nconst events = safeItems('Get lead_events (today)1');\nconst pipeline = safeItems('Get pipeline (today)1');\nconst base = $node['Compute Date Range1'].json;\nconst client_id = base?.client_id ?? null;\nconst today = base?.date || new Date().toISOString().slice(0, 10);\n\nif (!client_id) {\n  throw new Error('client_id is required for daily KPI generation');\n}\n\nconst eventRows = events.map(i => i.json || {});\nconst pipelineRows = pipeline.map(i => i.json || {});\n\nconst countEvent = (name) =>\n  eventRows.filter(e => e.event_type === name).length;\n\nconst hasStage = (stage) =>\n  pipelineRows.filter(p => p.stage === stage).length;\n\nreturn [{\n  client_id,\n  date: today,\n  leads_count: leads.length,\n  responses_sent: countEvent(\"first_response_sent\"),\n  booked_calls: countEvent(\"call_booked\"),\n  quotes_sent: hasStage(\"quoted\"),\n  wins: hasStage(\"won\"),\n  losses: hasStage(\"lost\"),\n}];"
+      },
+      "id": "4199ed96-1699-4fec-aee1-2ee600947e61",
+      "name": "Build KPI Row1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8384,
+        7504
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "health-ping",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "3d37a233-0ebf-412c-9b4a-1282821e8aa4",
+      "name": "Webhook (Health Ping)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        6944,
+        6400
+      ],
+      "webhookId": "25d149b5-0f85-41e1-b6b2-3aab9df28913"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Validate + Map Health": {
+      "main": [
+        [
+          {
+            "node": "IF Invalid Health Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Invalid Health Payload": {
+      "main": [
+        [
+          {
+            "node": "Respond (400)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert automation_health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert automation_health": {
+      "main": [
+        [
+          {
+            "node": "Respond OK (Health)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook (Health Status)": {
+      "main": [
+        [
+          {
+            "node": "Parse client_id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse client_id": {
+      "main": [
+        [
+          {
+            "node": "Get automation_health (recent)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get daily_kpis (latest)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get automation_health (recent)": {
+      "main": [
+        [
+          {
+            "node": "Merge (Health & KPI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Health Response": {
+      "main": [
+        [
+          {
+            "node": "Respond OK (Status)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cron (Daily KPI)": {
+      "main": [
+        [
+          {
+            "node": "Set client_id (daily)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set client_id (daily)": {
+      "main": [
+        [
+          {
+            "node": "Compute Date Range",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute Date Range": {
+      "main": [
+        [
+          {
+            "node": "Compute Date Range1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get leads (today)": {
+      "main": [
+        [
+          {
+            "node": "Merge (Append)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get daily_kpis (latest)": {
+      "main": [
+        [
+          {
+            "node": "Merge (Health & KPI)",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge (Health & KPI)": {
+      "main": [
+        [
+          {
+            "node": "Build Health Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge (Append)": {
+      "main": [
+        [
+          {
+            "node": "Build KPI Row1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute Date Range1": {
+      "main": [
+        [
+          {
+            "node": "Get lead_events (today)1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get pipeline (today)1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get leads (today)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get lead_events (today)1": {
+      "main": [
+        [
+          {
+            "node": "Merge (Append)",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Build KPI Row1": {
+      "main": [
+        [
+          {
+            "node": "Upsert daily_kpis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get pipeline (today)1": {
+      "main": [
+        [
+          {
+            "node": "Merge (Append)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook (Health Ping)": {
+      "main": [
+        [
+          {
+            "node": "Validate + Map Health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "ec38267b-0e08-4703-9dc8-6d80452de614",
+  "meta": {
+    "instanceId": "4bf975ace3f368cd438a6141ee2fc71975d8442c1b235cacd35cb39ef7b657f4"
+  },
+  "id": "7IDjTMxQew_BwdeoVLsbM",
+  "tags": []
+}

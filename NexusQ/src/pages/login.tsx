@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { signInWithEmailPassword, signInWithGoogleOAuth } from "@/lib/auth";
+import { ensureLiveSession, signInWithEmailPassword, signInWithGoogleOAuth } from "@/lib/auth";
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -22,9 +22,17 @@ export function LoginPage() {
     setError(null);
     setLoading(true);
 
-    const { error: signInError } = await signInWithEmailPassword({ email: email.trim(), password });
+    const { data, error: signInError } = await signInWithEmailPassword({ email: email.trim(), password });
     if (signInError) {
       setError(signInError.message);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      await ensureLiveSession(data.session, { clearInvalidSession: true });
+    } catch (sessionError) {
+      setError(sessionError instanceof Error ? sessionError.message : "Unable to restore your session.");
       setLoading(false);
       return;
     }

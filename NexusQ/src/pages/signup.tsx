@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { signInWithGoogleOAuth, signUpWithEmail } from "@/lib/auth";
+import { ensureLiveSession, signInWithGoogleOAuth, signUpWithEmail } from "@/lib/auth";
 
 export function SignupPage() {
   const navigate = useNavigate();
@@ -45,6 +45,12 @@ export function SignupPage() {
     }
 
     if (data.session) {
+      try {
+        await ensureLiveSession(data.session, { clearInvalidSession: true });
+      } catch (sessionError) {
+        setError(sessionError instanceof Error ? sessionError.message : "Unable to finish sign up.");
+        return;
+      }
       toast.success("Account created.");
       navigate("/link-workspace?mode=create", { replace: true });
       return;

@@ -1,17 +1,20 @@
 import { createClient } from "npm:@supabase/supabase-js@2.94.0";
 import type { User } from "npm:@supabase/supabase-js@2.94.0";
-import { corsHeaders, jsonResponse } from "../_shared/cors.ts";
+import { corsResponse, jsonResponse } from "../_shared/cors.ts";
+import {
+  getSupabaseAnonKey,
+  getSupabaseServiceRoleKey,
+  getSupabaseUrl,
+} from "../_shared/supabase-env.ts";
+import { resolveTenantForUser } from "../_shared/tenant.ts";
 
 type IntakeRequest = Record<string, unknown> & {
   source?: string;
   client_id?: string | null;
+  client_key?: string | null;
+  phone?: string | null;
+  email?: string | null;
 };
-
-function getEnv(name: string) {
-  const value = Deno.env.get(name);
-  if (!value) throw new Error(`Missing required env var: ${name}`);
-  return value;
-}
 
 function getOptionalEnv(name: string) {
   const value = Deno.env.get(name);
@@ -21,8 +24,8 @@ function getOptionalEnv(name: string) {
 }
 
 function getAuthClient(request: Request) {
-  const supabaseUrl = getEnv("SUPABASE_URL");
-  const anonKey = getEnv("SUPABASE_ANON_KEY");
+  const supabaseUrl = getSupabaseUrl();
+  const anonKey = getSupabaseAnonKey();
   const authHeader = request.headers.get("Authorization");
   if (!authHeader) return null;
 
@@ -44,8 +47,8 @@ function extractBearerToken(request: Request) {
 }
 
 function getServiceClient() {
-  const supabaseUrl = getEnv("SUPABASE_URL");
-  const serviceRoleKey = getEnv("SUPABASE_SERVICE_ROLE_KEY");
+  const supabaseUrl = getSupabaseUrl();
+  const serviceRoleKey = getSupabaseServiceRoleKey();
   return createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
@@ -71,31 +74,6 @@ async function parseJsonBody(request: Request) {
   } catch {
     throw new Error("Invalid JSON body.");
   }
-}
-
-async function verifyWorkspaceAccess(params: {
-  serviceClient: ReturnType<typeof getServiceClient>;
-  userId: string;
-  clientId: string | null;
-}) {
-  if (!params.clientId) return null;
-
-  const { data, error } = await params.serviceClient
-    .from("user_access")
-    .select("id")
-    .eq("user_id", params.userId)
-    .eq("client_id", params.clientId)
-    .eq("is_active", true)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(`Failed to verify workspace access: ${error.message}`);
-  }
-  if (!data?.id) {
-    throw new Error("You do not have access to this workspace.");
-  }
-
-  return params.clientId;
 }
 
 function resolveWorkflowAUrls() {
@@ -177,11 +155,11 @@ async function parseUpstreamPayload(response: Response) {
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return corsResponse(request);
   }
 
   if (request.method !== "POST") {
-    return jsonResponse({ ok: false, error: "Method not allowed." }, 405);
+    return jsonResponse({ ok: false, error: "Method not allowed." }, 405, request);
   }
 
   try {
@@ -189,17 +167,28 @@ Deno.serve(async (request) => {
     const body = await parseJsonBody(request);
     const source = String(body.source ?? "").trim();
     if (!source) {
-      return jsonResponse({ ok: false, error: "source is required." }, 400);
+      return jsonResponse({ ok: false, error: "source is required." }, 400, request);
+    }
+    const phone = typeof body.phone === "string" ? body.phone.trim() : "";
+    const email = typeof body.email === "string" ? body.email.trim() : "";
+    if (!phone && !email) {
+      return jsonResponse({ ok: false, error: "Either phone or email is required." }, 400, request);
     }
 
     const serviceClient = getServiceClient();
-    const clientIdRaw = typeof body.client_id === "string" ? body.client_id.trim() : "";
-    const clientId = clientIdRaw || null;
-    await verifyWorkspaceAccess({ serviceClient, userId: user.id, clientId });
+    const tenant = await resolveTenantForUser({
+      serviceClient,
+      userId: user.id,
+      tenant: {
+        clientId: body.client_id,
+        clientKey: body.client_key,
+      },
+    });
 
     const payload: Record<string, unknown> = {
       ...body,
-      client_id: clientId,
+      client_id: tenant.clientId,
+      client_key: tenant.clientKey,
     };
 
     const urls = resolveWorkflowAUrls();
@@ -208,8 +197,20 @@ Deno.serve(async (request) => {
 
     for (const url of urls) {
       try {
+        console.info("workflow-a-proxy forwarding", {
+          url,
+          client_id: tenant.clientId,
+          client_key: tenant.clientKey,
+          source,
+          has_secret: Boolean(secret),
+        });
         const response = await forwardRequest({ url, payload, secret });
         const upstreamPayload = await parseUpstreamPayload(response);
+        console.info("workflow-a-proxy upstream response", {
+          url,
+          status: response.status,
+          ok: response.ok,
+        });
         const upstreamOk =
           response.ok && upstreamPayload?._error !== true && upstreamPayload?.ok !== false;
 
@@ -221,7 +222,8 @@ Deno.serve(async (request) => {
               upstream_status: response.status,
               upstream_payload: upstreamPayload,
             },
-            200
+            200,
+            request
           );
         }
 
@@ -232,11 +234,12 @@ Deno.serve(async (request) => {
         lastError = `Workflow A failed at ${url}: ${reason}`;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        console.error("workflow-a-proxy upstream error", { url, message });
         lastError = `Workflow A failed at ${url}: ${message}`;
       }
     }
 
-    return jsonResponse({ ok: false, error: lastError }, 502);
+    return jsonResponse({ ok: false, error: lastError }, 502, request);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error.";
     const lower = message.toLowerCase();
@@ -246,6 +249,6 @@ Deno.serve(async (request) => {
         : lower.includes("do not have access")
         ? 403
         : 400;
-    return jsonResponse({ ok: false, error: message }, status);
+    return jsonResponse({ ok: false, error: message }, status, request);
   }
 });

@@ -21,7 +21,7 @@ function toAutomationHealthRecord(row: unknown): AutomationHealthRecord | null {
     workflowName: pickString(record.workflow_name),
     lastRunAt: pickTimestamp(record.last_run_at),
     status: pickString(record.status),
-    errorMessage: pickString(record.error_message),
+    errorMessage: pickString(record.error_message, record.error, record.message),
     updatedAt: pickTimestamp(record.updated_at, record.created_at),
     raw: record,
   };

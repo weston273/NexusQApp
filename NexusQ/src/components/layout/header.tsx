@@ -56,7 +56,7 @@ function isTypingTarget(target: EventTarget | null) {
   const node = target as HTMLElement | null;
   if (!node) return false;
   if (node.isContentEditable) return true;
-  const tag = node.tagName?.toLowerCase();
+  const tag = typeof node.tagName === "string" ? node.tagName.toLowerCase() : "";
   return tag === "input" || tag === "textarea" || tag === "select";
 }
 
@@ -96,7 +96,8 @@ export function Header({
     };
 
     const onKeyDown = (event: KeyboardEvent) => {
-      const key = event.key.toLowerCase();
+      const key = typeof event.key === "string" ? event.key.toLowerCase() : "";
+      if (!key) return;
       if ((event.ctrlKey || event.metaKey) && key === "k") {
         event.preventDefault();
         setCommandOpen((open) => !open);

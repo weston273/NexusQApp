@@ -8,6 +8,7 @@ import {
 import {
   freshnessPercent,
   inferWorkflowKey,
+  mapAutomationHealthToServices,
   parseTimestampMs,
   staleSignalLabel,
 } from "../src/features/health/utils.ts";
@@ -32,6 +33,7 @@ test("lead timing helper rejects invalid or reversed timestamps", () => {
 test("health helpers parse workflow signals and clamp freshness values", () => {
   assert.equal(inferWorkflowKey("Workflow A - Intake"), "A");
   assert.equal(inferWorkflowKey("pipeline sync"), "D");
+  assert.equal(inferWorkflowKey("Workflow E health"), "E");
   assert.equal(inferWorkflowKey("mystery service"), null);
 
   const parsedTimestamp = parseTimestampMs("2026-03-20 10:15:00+02");
@@ -45,4 +47,23 @@ test("health helpers parse workflow signals and clamp freshness values", () => {
   assert.deepEqual(staleSignalLabel(8, "degraded"), { label: "Delayed 8m", tone: "danger" });
   assert.deepEqual(staleSignalLabel(20, "stale"), { label: "Stale 20m", tone: "warning" });
   assert.equal(staleSignalLabel(2, "optimal"), null);
+});
+
+test("automation health mapping derives a useful fallback error for degraded rows", () => {
+  const services = mapAutomationHealthToServices([
+    {
+      id: "row-1",
+      clientId: "client-1",
+      workflowName: "Workflow E",
+      lastRunAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+      status: "degraded",
+      errorMessage: null,
+      updatedAt: new Date().toISOString(),
+      raw: {},
+    },
+  ]);
+
+  assert.equal(services.length, 1);
+  assert.equal(services[0]?.status, "degraded");
+  assert.match(services[0]?.error ?? "", /degraded status/i);
 });

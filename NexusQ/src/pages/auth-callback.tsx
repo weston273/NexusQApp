@@ -1,7 +1,7 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { exchangeOAuthCodeForSession } from "@/lib/auth";
+import { ensureLiveSession, exchangeOAuthCodeForSession } from "@/lib/auth";
 
 export function AuthCallbackPage() {
   const navigate = useNavigate();
@@ -22,9 +22,16 @@ export function AuthCallbackPage() {
         return;
       }
 
-      const { error: exchangeError } = await exchangeOAuthCodeForSession(code);
+      const { data, error: exchangeError } = await exchangeOAuthCodeForSession(code);
       if (exchangeError) {
         setError(exchangeError.message);
+        return;
+      }
+
+      try {
+        await ensureLiveSession(data.session, { clearInvalidSession: true });
+      } catch (sessionError) {
+        setError(sessionError instanceof Error ? sessionError.message : "Unable to complete sign in.");
         return;
       }
 

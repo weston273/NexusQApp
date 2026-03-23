@@ -88,6 +88,32 @@ Frontend env values belong in `.env.local` or your deployment provider's fronten
 
 Supabase edge-function secrets belong in the Supabase project, not the frontend. See [supabase/functions/README.md](./supabase/functions/README.md) for the current function secret list and deploy commands.
 
+## Multi-Client Rollout
+
+The current repo includes a tenant-hardening migration and updated edge functions for the multi-client rollout.
+
+After importing the updated n8n workflow JSONs, run:
+
+```bash
+npm run tenant:rollout
+```
+
+Or run the steps individually:
+
+```bash
+npm run tenant:push:migrations
+npm run tenant:deploy:functions
+```
+
+Notes:
+
+- The rollout expects the linked Supabase project in `supabase/.temp/project-ref`.
+- You must already be authenticated for the Supabase CLI on the machine running the command.
+- Messaging and inbound reply routing are now tenant-safe, which means each client needs its own `clients.phone` value before those flows can run for multiple clients.
+- Workflow A and Workflow E now depend on a real `clients.client_key` column. Apply database migrations before importing workflow revisions that select `client_key`.
+- New workspaces now receive a generated `client_key` automatically through the database bootstrap path.
+- Frontend lead intake is proxy-first again. A direct webhook fallback is only available in local development when `VITE_WORKFLOW_A_DEV_FALLBACK_URL` is set.
+
 ## Production Safeguards Added
 
 - Shared frontend env validation in `src/lib/config.ts`

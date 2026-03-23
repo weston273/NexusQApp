@@ -1,0 +1,857 @@
+{
+  "name": "D",
+  "nodes": [
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok:true, lead_id:$node['Validate + Map Status'].json.lead_id, stage:$node['Validate + Map Status'].json.stage } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "2bc3b218-040e-4ba6-8ec7-15582ea838a8",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1744,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "pipeline-update",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "ab510a8f-f6ee-4ebe-852c-4242c534e1cd",
+      "name": "Webhook (Pipeline Update)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        2880,
+        1376
+      ],
+      "webhookId": "76d5ff46-85dc-448f-8682-988c2bf5d117"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body ?? $json;\n\n// Required\nif (!body.lead_id) return [{ _error: true, status: 400, message: 'Missing lead_id' }];\n\n// Optional: allow client_id to be passed in, otherwise we will resolve it from the lead record\nconst client_id = body.client_id ?? null;\n\nconst rawStatus = String(body.status || body.stage || '').toLowerCase().trim();\n\n// Map incoming status -> standard stage + event_type\nlet stage = 'new';\nlet event_type = 'quote_sent';\nif (rawStatus.includes('book')) { stage='booked'; event_type='booking_created'; }\nelse if (rawStatus.includes('quote')) { stage='quoted'; event_type='quote_sent'; }\nelse if (rawStatus.includes('qual') || rawStatus.includes('inspect')) { stage='qualifying'; event_type='status_changed'; }\nelse if (rawStatus.includes('won')) { stage='booked'; event_type='deal_won'; }\nelse if (rawStatus.includes('lost')) { stage='new'; event_type='deal_lost'; }\n\nconst probability = stage === 'new' ? 10 : stage === 'qualifying' ? 35 : stage === 'quoted' ? 60 : 100;\n\nreturn [{\n  client_id,\n  lead_id: body.lead_id,\n  stage,\n  value: body.value ?? null,\n  probability,\n  event_type,\n  raw: body\n}];\n"
+      },
+      "id": "602b3847-44a0-499b-bff3-fcb1c80d88c5",
+      "name": "Validate + Map Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3664,
+        1376
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "83bd5d23-e17a-478b-abdd-feeea76ca751",
+              "leftValue": "={{ $json.lead_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notExists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "4cb6b15b-e926-4c29-bdfc-fc347798be3c",
+      "name": "IF Error",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3840,
+        1392
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok:false, error:$json.message } }}",
+        "options": {
+          "responseCode": "={{$json.status || 400}}"
+        }
+      },
+      "id": "4b8dda8f-a8f1-46d7-b7e9-3c012bb0cfd8",
+      "name": "Respond Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        4304,
+        1200
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{'https://peenmmujciouzulfoykq.supabase.co/rest/v1/leads?id=eq.' + $node['Validate + Map Status'].json.lead_id + '&select=client_id&limit=1'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "81129b2f-19c4-48b6-ac2c-61968c0ebed0",
+      "name": "Get Client",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        4048,
+        1504
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const requestedClientId = $node['Validate + Map Status'].json.client_id ?? null;\nconst rows = $node['Get Client'].json;\nconst lead = Array.isArray(rows) ? rows[0] : null;\n\nif (!lead?.client_id) {\n  return [{ _error: true, status: 404, message: 'Lead not found / missing client_id' }];\n}\n\nif (requestedClientId && requestedClientId !== lead.client_id) {\n  return [{ _error: true, status: 400, message: 'client_id does not match the lead tenant context' }];\n}\n\nreturn [{ client_id: lead.client_id }];"
+      },
+      "id": "c0d2a818-c54c-4239-9111-54f519152b72",
+      "name": "Set client_id",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4272,
+        1504
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{'https://peenmmujciouzulfoykq.supabase.co/rest/v1/pipeline?lead_id=eq.' + $node['Validate + Map Status'].json.lead_id + '&client_id=eq.' + $node['Set client_id'].json.client_id + '&select=id,lead_id,stage,value,probability,updated_at&limit=1'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c27a0dc8-79eb-4124-87cd-605c7a92da69",
+      "name": "Find Existing Pipeline Row",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        4496,
+        1504
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// If the previous node returned rows, they are separate input items.\n// Use the first input item as the \"latest row\"\nconst first = $input.first();\nconst row = first?.json;\n\nreturn [{ pipeline_id: row?.id ?? null }];"
+      },
+      "id": "10251d59-84d8-4a8b-8e0d-1f0b98fea8c6",
+      "name": "Set pipeline_id",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4720,
+        1504
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "3f0eda76-138c-4ef8-bcc8-0ad71aec6cba",
+              "leftValue": "={{ $json.pipeline_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "16fa947c-9c67-4f02-bc27-b753962506ea",
+      "name": "IF Existing Pipeline",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4912,
+        1504
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{'https://peenmmujciouzulfoykq.supabase.co/rest/v1/pipeline?id=eq.' + $json.pipeline_id}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            },
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "stage",
+              "value": "={{$node['Validate + Map Status'].json.stage}}"
+            },
+            {
+              "name": "value",
+              "value": "={{$node['Validate + Map Status'].json.value}}"
+            },
+            {
+              "name": "probability",
+              "value": "={{$node['Validate + Map Status'].json.probability}}"
+            },
+            {
+              "name": "updated_at",
+              "value": "={{$now}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "0d47e33e-d20b-4144-8eb1-2574a6524c17",
+      "name": "Update Pipeline",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        5136,
+        1392
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://peenmmujciouzulfoykq.supabase.co/rest/v1/pipeline",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates"
+            },
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "client_id",
+              "value": "={{$node['Set client_id'].json.client_id}}"
+            },
+            {
+              "name": "lead_id",
+              "value": "={{$node['Validate + Map Status'].json.lead_id}}"
+            },
+            {
+              "name": "stage",
+              "value": "={{$node['Validate + Map Status'].json.stage}}"
+            },
+            {
+              "name": "value",
+              "value": "={{$node['Validate + Map Status'].json.value}}"
+            },
+            {
+              "name": "probability",
+              "value": "={{$node['Validate + Map Status'].json.probability}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "58b1b102-bcaf-4e7e-9f58-d8f66b344fee",
+      "name": "Insert Pipeline",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        5136,
+        1632
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{'https://peenmmujciouzulfoykq.supabase.co/rest/v1/leads?id=eq.' + $node['Validate + Map Status'].json.lead_id + '&client_id=eq.' + encodeURIComponent($node['Set client_id'].json.client_id)}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            },
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "={{$node['Validate + Map Status'].json.stage}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ed7f3dc6-0580-482e-80c5-69433af46c36",
+      "name": "Update Lead Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        5360,
+        1504
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://peenmmujciouzulfoykq.supabase.co/rest/v1/lead_events",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            },
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "client_id",
+              "value": "={{$node['Set client_id'].json.client_id}}"
+            },
+            {
+              "name": "lead_id",
+              "value": "={{$node['Validate + Map Status'].json.lead_id}}"
+            },
+            {
+              "name": "event_type",
+              "value": "={{$node['Validate + Map Status'].json.event_type}}"
+            },
+            {
+              "name": "payload_json",
+              "value": "={{$node['Validate + Map Status'].json.raw}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f6375848-6874-497e-ae85-8f811c2f5cbe",
+      "name": "Insert Event (pipeline sync)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        5568,
+        1504
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok:true, lead_id:$node['Validate + Map Status'].json.lead_id, stage:$node['Validate + Map Status'].json.stage } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "75231656-e2b2-4443-963e-c71c3e31a109",
+      "name": "Respond OK1",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        6208,
+        1504
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://n8n-k7j4.onrender.com/webhook/health-ping",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"client_id\": \"{{$json.client_id || ''}}\",\n  \"workflow_name\": \"Workflow D\",\n  \"status\": \"success\",\n  \"error_message\": null,\n  \"last_run_at\": \"{{new Date().toISOString()}}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        5984,
+        1504
+      ],
+      "id": "5a0ac62c-29a6-4e59-bd11-0cf43ed1b759",
+      "name": "HTTP Request",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const client_id = $items(0)[0]?.json?.client_id ?? null;\n\nif (!client_id) {\n  return [{\n    json: {\n      ok: false,\n      _error: true,\n      message: 'Missing resolved client_id',\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    client_id,\n    ok: true\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5776,
+        1504
+      ],
+      "id": "56c4013f-6156-465e-a5c5-cb63c33379c2",
+      "name": "Code in JavaScript",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://n8n-k7j4.onrender.com/webhook/health-ping",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"client_id\": \"{{$json.client_id || ''}}\",\n  \"workflow_name\": \"D\",\n  \"status\": \"failed\",\n  \"error_message\": \"couldn't get client\",\n  \"last_run_at\": \"{{new Date().toISOString()}}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        4080,
+        1264
+      ],
+      "id": "f59b0bb7-7d77-4784-bbb9-63582cb00d78",
+      "name": "HTTP Request1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body ?? $json;\nconst headers = $json.headers ?? {};\n\nconst expectedSecret = $json.expected_secret;\n\nconst secret =\n  headers[\"x-nexusq-secret\"] ||\n  headers[\"X-NexusQ-Secret\"];\n\nif (secret !== expectedSecret) {\n  return [{\n    _error: true,\n    status: 401,\n    message: \"Unauthorized\",\n  }];\n}\n\nif (!body.lead_id) {\n  return [{\n    _error: true,\n    status: 400,\n    message: \"Missing lead_id\",\n  }];\n}\n\nreturn [{\n  _error: false,\n  ...body,\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2928,
+        1008
+      ],
+      "id": "7d244dfa-c775-4f4e-a202-0f6a747796ed",
+      "name": "validate request + secret"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "e0b25faa-6486-4f7a-8645-8a5a6b9d9a3c",
+              "leftValue": "={{ $json._error === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3168,
+        1008
+      ],
+      "id": "279e7874-dc63-430c-ac74-559e823b2af5",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://n8n-k7j4.onrender.com/webhook/health-ping",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        3904,
+        1680
+      ],
+      "id": "22b061a8-fad4-473b-b791-6bdad74d5dcc",
+      "name": "HTTP Request2"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"ok\": false,\n  \"message\": \"{{ $json.message }}\"\n}",
+        "options": {
+          "responseCode": "={{ $json.status || 400 }}"
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        3456,
+        1632
+      ],
+      "id": "825246f4-ab88-465d-a99a-749c5c12762d",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "9e23bd1e-8dbb-4c11-a4b9-2a7f7434ca02",
+              "name": "expected_secret",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2640,
+        1024
+      ],
+      "id": "11a53b54-f641-422d-81c9-3ef42360b4d1",
+      "name": "Edit Fields"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook (Pipeline Update)": {
+      "main": [
+        [
+          {
+            "node": "Validate + Map Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate + Map Status": {
+      "main": [
+        [
+          {
+            "node": "IF Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Error": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Client",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Client": {
+      "main": [
+        [
+          {
+            "node": "Set client_id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set client_id": {
+      "main": [
+        [
+          {
+            "node": "Find Existing Pipeline Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Existing Pipeline Row": {
+      "main": [
+        [
+          {
+            "node": "Set pipeline_id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set pipeline_id": {
+      "main": [
+        [
+          {
+            "node": "IF Existing Pipeline",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Existing Pipeline": {
+      "main": [
+        [
+          {
+            "node": "Update Pipeline",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert Pipeline",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Pipeline": {
+      "main": [
+        [
+          {
+            "node": "Update Lead Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Pipeline": {
+      "main": [
+        [
+          {
+            "node": "Update Lead Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Lead Status": {
+      "main": [
+        [
+          {
+            "node": "Insert Event (pipeline sync)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Event (pipeline sync)": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Respond OK1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Respond Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "validate request + secret": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [],
+        []
+      ]
+    },
+    "Respond to Webhook": {
+      "main": [
+        []
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "validate request + secret",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "09cef2fd-9a59-47db-b042-91af6cf71578",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "4bf975ace3f368cd438a6141ee2fc71975d8442c1b235cacd35cb39ef7b657f4"
+  },
+  "id": "mIBhaTexy8zVv3nrFlulI",
+  "tags": []
+}

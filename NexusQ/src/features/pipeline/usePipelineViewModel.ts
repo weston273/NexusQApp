@@ -9,8 +9,9 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { toast } from "sonner";
+import { useAuth } from "@/context/AuthProvider";
 import { useLeads } from "@/hooks/useLeads";
-import { parseFunctionError } from "@/lib/access";
+import { invokeAuthedFunction } from "@/lib/edgeFunctions";
 import { getErrorMessage } from "@/lib/errors";
 import {
   isPipelineStage,
@@ -19,7 +20,6 @@ import {
   PIPELINE_STAGE_ORDER,
   type PipelineStage,
 } from "@/lib/leads";
-import { supabase } from "@/lib/supabase";
 import type { PipelineActiveLead, PipelineStageFilter, UiLead } from "@/features/pipeline/types";
 import {
   buildActiveEventSummary,
@@ -36,21 +36,21 @@ import {
   filterUiLeads,
 } from "@/features/pipeline/utils";
 
-async function callWorkflowD(args: { lead_id: string; status: PipelineStage; value?: number | null }) {
+async function callWorkflowD(args: {
+  lead_id: string;
+  client_id: string;
+  status: PipelineStage;
+  value?: number | null;
+}) {
   const payload: Record<string, unknown> = {
     lead_id: args.lead_id,
+    client_id: args.client_id,
     status: args.status,
     stage: args.status,
     value: args.value ?? null,
   };
 
-  const { data, error } = await supabase.functions.invoke("workflow-d-proxy", {
-    body: payload,
-  });
-
-  if (error) {
-    throw new Error(await parseFunctionError(error));
-  }
+  const data = await invokeAuthedFunction<Record<string, unknown> | null>("workflow-d-proxy", payload);
   if (!data?.ok) {
     const message = typeof data?.error === "string" ? data.error : "Workflow D failed.";
     throw new Error(message);
@@ -60,6 +60,7 @@ async function callWorkflowD(args: { lead_id: string; status: PipelineStage; val
 }
 
 export function usePipelineViewModel() {
+  const { clientId } = useAuth();
   const { leads, events, pipelineRows, loading, error, lastLoadedAt, reload } = useLeads();
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -211,6 +212,10 @@ export function usePipelineViewModel() {
 
   const saveEdit = React.useCallback(async () => {
     if (!activeLead) return;
+    if (!clientId) {
+      toast.error("Active workspace client_id is required before updating the pipeline.");
+      return;
+    }
 
     const previousStage = activeLead.stage;
     const previousValue = activeLead.valueNum;
@@ -223,6 +228,7 @@ export function usePipelineViewModel() {
       const valueNum = parseCurrencyInput(editValue);
       await callWorkflowD({
         lead_id: activeLead.id,
+        client_id: clientId,
         status: editStage,
         value: valueNum,
       });
@@ -232,7 +238,12 @@ export function usePipelineViewModel() {
           label: "Undo",
           onClick: async () => {
             try {
-              await callWorkflowD({ lead_id: leadId, status: previousStage, value: previousValue });
+              await callWorkflowD({
+                lead_id: leadId,
+                client_id: clientId,
+                status: previousStage,
+                value: previousValue,
+              });
               toast.success("Update reverted");
               await reload({ silent: true });
             } catch (undoError: unknown) {
@@ -249,7 +260,7 @@ export function usePipelineViewModel() {
     } finally {
       setSaving(false);
     }
-  }, [activeLead, editStage, editValue, reload]);
+  }, [activeLead, clientId, editStage, editValue, reload]);
 
   const clearStageOverride = React.useCallback((leadId: string) => {
     setStageOverrides((previous) => {
@@ -261,6 +272,11 @@ export function usePipelineViewModel() {
 
   const moveLeadStage = React.useCallback(
     async (lead: UiLead, direction: "prev" | "next") => {
+      if (!clientId) {
+        toast.error("Active workspace client_id is required before moving a lead.");
+        return;
+      }
+
       const index = PIPELINE_STAGE_ORDER.indexOf(lead.stage);
       const nextIndex = direction === "next" ? index + 1 : index - 1;
       if (nextIndex < 0 || nextIndex >= PIPELINE_STAGE_ORDER.length) return;
@@ -271,14 +287,19 @@ export function usePipelineViewModel() {
       setStageOverrides((previous) => ({ ...previous, [lead.id]: nextStage }));
 
       try {
-        await callWorkflowD({ lead_id: lead.id, status: nextStage, value: lead.valueNum });
+        await callWorkflowD({ lead_id: lead.id, client_id: clientId, status: nextStage, value: lead.valueNum });
         toast.success(`Moved to ${nextStage}`, {
           action: {
             label: "Undo",
             onClick: async () => {
               setStageOverrides((previous) => ({ ...previous, [lead.id]: previousStage }));
               try {
-                await callWorkflowD({ lead_id: lead.id, status: previousStage, value: lead.valueNum });
+                await callWorkflowD({
+                  lead_id: lead.id,
+                  client_id: clientId,
+                  status: previousStage,
+                  value: lead.valueNum,
+                });
                 toast.success("Stage reverted");
                 await reload({ silent: true });
                 clearStageOverride(lead.id);
@@ -296,7 +317,7 @@ export function usePipelineViewModel() {
         toast.error(getErrorMessage(moveError, "Failed to move stage"));
       }
     },
-    [clearStageOverride, reload]
+    [clearStageOverride, clientId, reload]
   );
 
   const handleDragStart = React.useCallback((event: DragStartEvent) => {
@@ -321,6 +342,12 @@ export function usePipelineViewModel() {
 
   const handleDragEnd = React.useCallback(
     async (event: DragEndEvent) => {
+      if (!clientId) {
+        toast.error("Active workspace client_id is required before moving a lead.");
+        setActiveDragLeadId(null);
+        return;
+      }
+
       const leadId = event.active.data.current?.leadId as string | undefined;
       const overId = event.over?.id ? String(event.over.id) : "";
       setActiveDragLeadId(null);
@@ -342,14 +369,19 @@ export function usePipelineViewModel() {
       setStageOverrides((previous) => ({ ...previous, [lead.id]: targetStage }));
 
       try {
-        await callWorkflowD({ lead_id: lead.id, status: targetStage, value: lead.valueNum });
+        await callWorkflowD({ lead_id: lead.id, client_id: clientId, status: targetStage, value: lead.valueNum });
         toast.success(`Moved ${lead.name} to ${targetStage}`, {
           action: {
             label: "Undo",
             onClick: async () => {
               setStageOverrides((previous) => ({ ...previous, [lead.id]: originalStage }));
               try {
-                await callWorkflowD({ lead_id: lead.id, status: originalStage, value: lead.valueNum });
+                await callWorkflowD({
+                  lead_id: lead.id,
+                  client_id: clientId,
+                  status: originalStage,
+                  value: lead.valueNum,
+                });
                 toast.success("Stage reverted");
                 await reload({ silent: true });
                 clearStageOverride(lead.id);
@@ -369,7 +401,7 @@ export function usePipelineViewModel() {
         delete dragOriginRef.current[leadId];
       }
     },
-    [clearStageOverride, leadById, reload]
+    [clearStageOverride, clientId, leadById, reload]
   );
 
   const handleDragCancel = React.useCallback(() => {

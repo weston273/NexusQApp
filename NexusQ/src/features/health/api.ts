@@ -207,6 +207,10 @@ async function probeEndpoint(url: string, index: number, clientId: string | null
 }
 
 export async function fetchHealthStatus(clientId: string | null): Promise<FetchHealthStatusResult> {
+  if (!clientId) {
+    throw new HealthFetchError("Active workspace client_id is required before fetching health status.", []);
+  }
+
   if (!HEALTH_URLS.length) {
     throw new HealthFetchError("Workflow E health URL is not configured. Set VITE_WORKFLOW_E_HEALTH_URL.", []);
   }

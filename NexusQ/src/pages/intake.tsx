@@ -17,8 +17,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { supabase } from '@/lib/supabase';
-import { parseFunctionError } from '@/lib/access';
 import { useAuth } from '@/context/AuthProvider';
 import { getErrorMessage } from '@/lib/errors';
 import {
@@ -29,6 +27,7 @@ import {
   saveRecentIntakeAddresses,
   type IntakeDraft,
 } from '@/lib/persistence/intake';
+import { submitLeadToWorkflowA } from '@/lib/services/workflowA';
 
 type Step = 'service' | 'details' | 'contact' | 'success';
 
@@ -203,6 +202,11 @@ export function LeadIntake() {
   async function submitLead() {
     const ref = makeReferenceId();
 
+    if (!clientId) {
+      toast.error("Choose an active workspace before submitting intake.");
+      return;
+    }
+
     if (!formData.service) {
       toast.error("Please select a service first.");
       setStep("service");
@@ -243,15 +247,14 @@ export function LeadIntake() {
     };
 
     try {
-      const { data, error } = await supabase.functions.invoke("workflow-a-proxy", {
-        body: payload,
+      const result = await submitLeadToWorkflowA({
+        ...payload,
+        source: String(payload.source),
+        client_id: String(payload.client_id),
       });
-      if (error) {
-        throw new Error(await parseFunctionError(error));
-      }
-      if (!data?.ok) {
-        const message = typeof data?.error === "string" ? data.error : "Lead intake request failed.";
-        throw new Error(message);
+
+      if (import.meta.env.DEV && result.via === "webhook") {
+        console.info("Lead intake submitted through development Workflow A webhook fallback.", result);
       }
 
       setReferenceId(ref);

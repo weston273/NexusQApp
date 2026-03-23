@@ -68,7 +68,7 @@ export type FetchHealthStatusResult = {
   activeEndpointUrl: string | null;
 };
 
-export const WORKFLOW_KEYS = ["A", "B", "C", "D"] as const;
+export const WORKFLOW_KEYS = ["A", "B", "C", "D", "E"] as const;
 export type WorkflowKey = (typeof WORKFLOW_KEYS)[number];
 
 export const NOMINAL_REFRESH_SEC = 45;

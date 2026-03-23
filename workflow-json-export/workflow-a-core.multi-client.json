@@ -1,0 +1,819 @@
+{
+  "name": "A - (Core)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "=lead-webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "197b6fba-6cd8-476c-9697-aadc37a69175",
+      "name": "Webhook (Lead Intake)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -672,
+        112
+      ],
+      "webhookId": "2fdb571f-6caf-44e2-acd2-6b0e17ff9ad9"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body ?? $json;\n\nconst full_name =\n  body.full_name ||\n  body.name ||\n  `${body.first_name || \"\"} ${body.last_name || \"\"}`.trim();\n\nconst client_id = typeof body.client_id === 'string' ? body.client_id.trim() : '';\nconst client_key = typeof body.client_key === 'string' ? body.client_key.trim().toLowerCase() : '';\nconst phone = body.phone || body.msisdn || body.mobile || \"\";\nconst email = body.email || \"\";\n\nif (!client_id && !client_key) {\n  return [{\n    json: {\n      _error: true,\n      status: 422,\n      message: \"client_id or client_key is required.\"\n    }\n  }];\n}\n\nif (!phone && !email) {\n  return [{\n    json: {\n      _error: true,\n      status: 422,\n      message: \"Missing contact info. Provide phone or email.\"\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    source: body.source || \"webhook\",\n    client_id: client_id || null,\n    client_key: client_key || null,\n\n    full_name,\n    name: full_name,\n\n    first_name: body.first_name || (full_name.split(\" \")[0] || \"\"),\n    last_name: body.last_name || (full_name.split(\" \" ).slice(1).join(\" \" ) || \"\"),\n\n    phone,\n    email,\n\n    message: body.message || body.note || \"\",\n    service: body.service || \"\",\n    urgency: body.urgency || \"\",\n    address: body.address || \"\",\n\n    campaign: body.campaign || \"\",\n    adset: body.adset || \"\",\n    ad: body.ad || \"\",\n    form_id: body.form_id || \"\",\n    page_id: body.page_id || \"\",\n    external_lead_id: body.external_lead_id || body.lead_id || body.id || \"\",\n\n    occurred_at: new Date().toISOString(),\n    raw: body\n  }\n}];"
+      },
+      "id": "590b814f-4081-4a16-9909-506f6fb06d51",
+      "name": "Normalize + Require client_key",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -432,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "4922b39c-e9f5-4d34-bd64-6e6eba4d845e",
+              "leftValue": "={{ $json._error }}",
+              "rightValue": {},
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "2f5630e5-b8dd-47de-ab15-d1059e525af1",
+      "name": "IF Error",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -208,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok:false, error:$json.message } }}",
+        "options": {
+          "responseCode": "={{$json.status || 400}}"
+        }
+      },
+      "id": "d3cde6a4-229e-440c-9eae-1c504225d3f5",
+      "name": "Respond Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        672,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ (() => { const lead = $node['Normalize + Require client_key'].json; const params = ['status=eq.active','select=id,name,phone,email,timezone,client_key','limit=2']; if (lead.client_id) params.push('id=eq.' + encodeURIComponent(lead.client_id)); if (lead.client_key) params.push('client_key=eq.' + encodeURIComponent(lead.client_key)); if (!lead.client_id && !lead.client_key) params.push('id=eq.__missing__'); return 'https://peenmmujciouzulfoykq.supabase.co/rest/v1/clients?' + params.join('&'); })() }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2a687bb0-1560-45d6-a5cd-e5e6aa78300f",
+      "name": "Get Client by client_key",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        0,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(item => item.json).filter(Boolean);\nconst lead = $node['Normalize + Require client_key'].json;\nconst requestedId = typeof lead.client_id === 'string' && lead.client_id.trim() ? lead.client_id.trim() : null;\nconst requestedKey = typeof lead.client_key === 'string' && lead.client_key.trim() ? lead.client_key.trim().toLowerCase() : null;\n\nif (!rows.length) {\n  return [{ json: { _error: true, status: 404, message: 'No active client matched the provided tenant reference.' } }];\n}\n\nif (rows.length > 1) {\n  return [{ json: { _error: true, status: 409, message: 'Client lookup was ambiguous. Refine the tenant reference.' } }];\n}\n\nconst client = rows[0];\nif (!client?.id) {\n  return [{ json: { _error: true, status: 404, message: 'Resolved client is missing an id.' } }];\n}\n\nconst resolvedId = String(client.id).trim();\nconst resolvedKey = typeof client.client_key === 'string' && client.client_key.trim() ? client.client_key.trim().toLowerCase() : null;\n\nif (requestedId && resolvedId !== requestedId) {\n  return [{ json: { _error: true, status: 409, message: 'client_id did not match the resolved workspace.' } }];\n}\n\nif (requestedKey && !resolvedKey) {\n  return [{ json: { _error: true, status: 500, message: 'Resolved client is missing client_key.' } }];\n}\n\nif (requestedKey && resolvedKey !== requestedKey) {\n  return [{ json: { _error: true, status: 409, message: 'client_key did not match the resolved workspace.' } }];\n}\n\nreturn [{\n  json: {\n    client_id: resolvedId,\n    client_key: resolvedKey,\n    client_phone: client.phone ?? null,\n    client_name: client.name ?? null,\n    client_timezone: client.timezone ?? 'UTC',\n  }\n}];"
+      },
+      "id": "e2634e04-e2b2-4711-af3c-483d37bd2ffc",
+      "name": "Set client_id",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "023e7ec7-70a2-47ce-9dbe-46b7f822d9f3",
+              "leftValue": "={{ $json._error }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b08a37eb-d39b-446e-a293-5cc7338f6edf",
+      "name": "IF Client Lookup Error",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        448,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok:false, error:$json.message } }}",
+        "options": {
+          "responseCode": "={{$json.status || 403}}"
+        }
+      },
+      "id": "734be580-8ad3-4829-b149-1b8d61e99ecc",
+      "name": "Respond Client Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1296,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const lead = $node[\"Normalize + Require client_key\"].json; \nconst client_id = $node[\"Set client_id\"].json.client_id;\n\nconst since = new Date(Date.now() - 10 * 60 * 1000).toISOString();\n\nconst clauses = [];\nif (lead.phone) clauses.push(`phone.eq.${encodeURIComponent(lead.phone)}`);\nif (lead.email) clauses.push(`email.eq.${encodeURIComponent(lead.email)}`);\n\nif (clauses.length === 0) {\n  return [{\n    json: {\n      _error: true,\n      status: 422,\n      message: \"No phone/email available for dedupe.\"\n    }\n  }];\n}\n\nconst url =\n  `https://peenmmujciouzulfoykq.supabase.co/rest/v1/leads` +\n  `?client_id=eq.${encodeURIComponent(client_id)}` +\n  `&created_at=gte.${encodeURIComponent(since)}` +\n  `&or=(${clauses.join(\",\")})` +\n  `&select=id` +\n  `&limit=1`;\n\nreturn [{ json: { url, client_id, since } }];\n"
+      },
+      "id": "7e7c73c7-451b-4f36-aa6d-a2e587860a48",
+      "name": "Build Dedupe Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{$json.url}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5OTAyMDksImV4cCI6MjA4NDU2NjIwOX0.gF7JDAOiQC5M7JetScBDGmIfPOMz2p5DIqe-MjFoNXs"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "69d4a7a9-f54a-4735-abd5-6b93ccf26fd2",
+      "name": "Check Duplicate (10m)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        864,
+        368
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "ef3e9f91-4ca0-44fe-abaa-6acb60468d00",
+              "leftValue": "={{ Array.isArray($json) ? $json.length : 0 }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "4057a419-50db-4d76-90e0-d67c0b9dcf98",
+      "name": "IF Duplicate",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1072,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const existing = Array.isArray($json) ? $json[0] : null;\nreturn [{ lead_id: existing?.id }];"
+      },
+      "id": "0aa958c8-d522-4d33-b3d5-837c45878805",
+      "name": "Set Existing lead_id",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://peenmmujciouzulfoykq.supabase.co/rest/v1/leads",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            },
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "client_id",
+              "value": "={{$node['Set client_id'].json.client_id}}"
+            },
+            {
+              "name": "name",
+              "value": "={{$node['Normalize + Require client_key'].json.name}}"
+            },
+            {
+              "name": "phone",
+              "value": "={{$node['Normalize + Require client_key'].json.phone}}"
+            },
+            {
+              "name": "email",
+              "value": "={{$node['Normalize + Require client_key'].json.email}}"
+            },
+            {
+              "name": "source",
+              "value": "={{$node['Normalize + Require client_key'].json.source}}"
+            },
+            {
+              "name": "status",
+              "value": "new"
+            },
+            {
+              "name": "score",
+              "value": 0
+            },
+            {
+              "name": "service",
+              "value": "={{$node['Normalize + Require client_key'].json.service}}"
+            },
+            {
+              "name": "urgency",
+              "value": "={{$node['Normalize + Require client_key'].json.urgency}}"
+            },
+            {
+              "name": "address",
+              "value": "={{$node['Normalize + Require client_key'].json.address}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b99c1c86-a120-42f7-9d89-029a56d8e7f1",
+      "name": "Insert Lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1280,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://peenmmujciouzulfoykq.supabase.co/rest/v1/pipeline",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            },
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "client_id",
+              "value": "={{$node['Set client_id'].json.client_id}}"
+            },
+            {
+              "name": "lead_id",
+              "value": "={{$node['Final lead_id1'].json.lead_id}}"
+            },
+            {
+              "name": "stage",
+              "value": "new"
+            },
+            {
+              "name": "value",
+              "value": 0
+            },
+            {
+              "name": "probability",
+              "value": 10
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "8b3a70a5-cbe3-41bc-aa8d-6aad875f184a",
+      "name": "Insert Pipeline (new)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1728,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://peenmmujciouzulfoykq.supabase.co/rest/v1/lead_events",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            },
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "client_id",
+              "value": "={{$node['Set client_id'].json.client_id}}"
+            },
+            {
+              "name": "lead_id",
+              "value": "={{$node['Final lead_id1'].json.lead_id}}"
+            },
+            {
+              "name": "event_type",
+              "value": "lead_created"
+            },
+            {
+              "name": "payload_json",
+              "value": "={{ { ...$node['Normalize + Require client_key'].json, client_id:$node['Set client_id'].json.client_id, client_key:$node['Set client_id'].json.client_key, client_phone:$node['Set client_id'].json.client_phone, client_timezone:$node['Set client_id'].json.client_timezone } }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9f44f1cf-3ddd-44cd-8be5-1379c0c255b3",
+      "name": "Insert Event (lead_created)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1952,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok:true, lead_id:$node['Final lead_id1'].json.lead_id, client_id:$node['Set client_id'].json.client_id } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "3549d3c1-c92a-4918-b910-06a1bf1f9888",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2336,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const lead_id = $json.lead_id || $json.id;\n\nif (!lead_id) {\n  return [{ json: { _error: true, status: 500, message: \"lead_id not found after dedupe/insert\" } }];\n}\n\nreturn [{ json: { lead_id } }];\n"
+      },
+      "id": "4d5b0fef-b134-4bf8-a05f-d54ce1c882b3",
+      "name": "Final lead_id1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1504,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://n8n-k7j4.onrender.com/webhook/health-ping",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"client_id\": \"{{ $json.client_id || $node['Set client_id'].json.client_id || '' }}\",\n  \"workflow_name\": \"A\",\n  \"status\": \"optimal\",\n  \"error_message\": null,\n  \"last_run_at\": \"{{ new Date().toISOString() }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2160,
+        368
+      ],
+      "id": "fa155a43-1148-4855-be82-7e650bacd913",
+      "name": "insert to E",
+      "retryOnFail": false,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://n8n-k7j4.onrender.com/webhook/health-ping",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"client_id\": \"{{ $json.client_id || $node['Set client_id'].json.client_id || '' }}\",\n  \"workflow_name\": \"A\",\n  \"status\": \"error\",\n  \"error_message\": \"{{ String($json.status || 'Client lookup error').slice(0, 200) }}\",\n  \"last_run_at\": \"{{ new Date().toISOString() }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        96,
+        -16
+      ],
+      "id": "39f71612-9313-4852-8427-57afb123b368",
+      "name": "HTTP Request",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://n8n-k7j4.onrender.com/webhook/health-ping",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"client_id\": \"{{ $json.client_id || $node['Set client_id'].json.client_id || '' }}\",\n  \"workflow_name\": \"A\",\n  \"status\": \"error\",\n  \"error_message\": \"{{ String($json.status || 'Client lookup error').slice(0, 200) }}\",\n  \"last_run_at\": \"{{ new Date().toISOString() }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        800,
+        144
+      ],
+      "id": "319851ab-dc79-4512-861b-6fe8bfc825f0",
+      "name": "HTTP Request1",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook (Lead Intake)": {
+      "main": [
+        [
+          {
+            "node": "Normalize + Require client_key",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize + Require client_key": {
+      "main": [
+        [
+          {
+            "node": "IF Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Error": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Client by client_key",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Client by client_key": {
+      "main": [
+        [
+          {
+            "node": "Set client_id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set client_id": {
+      "main": [
+        [
+          {
+            "node": "IF Client Lookup Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Client Lookup Error": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Dedupe Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Dedupe Query": {
+      "main": [
+        [
+          {
+            "node": "Check Duplicate (10m)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Duplicate (10m)": {
+      "main": [
+        [
+          {
+            "node": "IF Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Duplicate": {
+      "main": [
+        [
+          {
+            "node": "Set Existing lead_id",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Existing lead_id": {
+      "main": [
+        [
+          {
+            "node": "Final lead_id1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Lead": {
+      "main": [
+        [
+          {
+            "node": "Final lead_id1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Pipeline (new)": {
+      "main": [
+        [
+          {
+            "node": "Insert Event (lead_created)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Event (lead_created)": {
+      "main": [
+        [
+          {
+            "node": "insert to E",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Final lead_id1": {
+      "main": [
+        [
+          {
+            "node": "Insert Pipeline (new)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "insert to E": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond Error": {
+      "main": [
+        []
+      ]
+    },
+    "Respond Client Error": {
+      "main": [
+        []
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Respond Client Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Respond Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "bae58384-b224-4bd1-87f3-2bd1b9022463",
+  "meta": {
+    "instanceId": "4bf975ace3f368cd438a6141ee2fc71975d8442c1b235cacd35cb39ef7b657f4"
+  },
+  "id": "S0052cjzqZGEfGDKoZle1",
+  "tags": []
+}

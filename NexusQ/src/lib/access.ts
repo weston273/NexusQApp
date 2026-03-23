@@ -2,6 +2,7 @@ import type { PostgrestError } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { getPersistedActiveClientId, setPersistedActiveClientId } from "@/lib/persistence/workspace";
 import { canManageWorkspaceAccess } from "@/lib/permissions";
+import { invokeAuthedFunction, parseFunctionError } from "@/lib/edgeFunctions";
 
 export type AccessRole = "owner" | "admin" | "viewer";
 
@@ -126,77 +127,7 @@ export function normalizeAccessKey(value: string) {
   return value.trim().toUpperCase();
 }
 
-export async function parseFunctionError(error: unknown) {
-  if (!error) return "An unexpected error occurred.";
-
-  const functionError = error as { context?: Response; message?: string };
-  if (functionError.context instanceof Response) {
-    const status = functionError.context.status;
-    try {
-      const payload = await functionError.context.json();
-      const bodyMessage = payload?.error || payload?.message;
-      if (typeof bodyMessage === "string" && bodyMessage.trim()) {
-        return bodyMessage;
-      }
-    } catch {
-      // Ignore JSON parsing issues and use fallback message.
-    }
-
-    if (status === 401) return "Unauthorized request. Please sign out and sign in again.";
-    if (status === 403) return "Forbidden request. Your account does not have permission for this workspace.";
-    if (status >= 500) return "Server error while processing the request.";
-  }
-
-  if (error instanceof Error) return error.message;
-  return String(error);
-}
-
-async function ensureSignedInSession(forceRefresh = false) {
-  if (forceRefresh) {
-    const { data, error } = await supabase.auth.refreshSession();
-    if (error || !data.session?.access_token) {
-      throw new Error(error?.message || "You are not signed in. Please sign in again.");
-    }
-    return data.session.access_token;
-  }
-
-  const { data, error } = await supabase.auth.getSession();
-  if (error) {
-    throw new Error(`Failed to resolve session: ${error.message}`);
-  }
-  if (!data.session?.access_token) {
-    throw new Error("You are not signed in. Please sign in again.");
-  }
-  return data.session.access_token;
-}
-
-function isUnauthorizedFunctionError(error: unknown) {
-  const functionError = error as { context?: Response };
-  return functionError.context instanceof Response && functionError.context.status === 401;
-}
-
-async function invokeAuthedFunction<T>(name: string, body: Record<string, unknown>) {
-  let token = await ensureSignedInSession();
-
-  let result = await supabase.functions.invoke(name, {
-    body,
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  if (result.error && isUnauthorizedFunctionError(result.error)) {
-    token = await ensureSignedInSession(true);
-    result = await supabase.functions.invoke(name, {
-      body,
-      headers: { Authorization: `Bearer ${token}` },
-    });
-  }
-
-  if (result.error) {
-    throw new Error(await parseFunctionError(result.error));
-  }
-
-  return result.data as T;
-}
+export { parseFunctionError };
 
 async function invokeWorkspaceBootstrap(payload: Record<string, unknown>): Promise<WorkspaceBootstrapResult> {
   const data = await invokeAuthedFunction<WorkspaceBootstrapResult | null>("workspace-bootstrap", payload);

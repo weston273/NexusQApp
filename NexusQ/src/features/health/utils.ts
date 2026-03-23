@@ -44,6 +44,9 @@ export function inferWorkflowKey(serviceName: string): WorkflowKey | null {
   if (normalized.startsWith("d") || normalized.includes("workflow d") || normalized.includes("pipeline") || normalized.includes("booking")) {
     return "D";
   }
+  if (normalized.startsWith("e") || normalized.includes("workflow e") || normalized.includes("health")) {
+    return "E";
+  }
 
   return null;
 }
@@ -150,6 +153,9 @@ export function pickHealthIcon(serviceName: string): LucideIcon {
   }
   if (normalized.startsWith("d") || normalized.includes("workflow d") || normalized.includes("pipeline") || normalized.includes("booking")) {
     return Database;
+  }
+  if (normalized.startsWith("e") || normalized.includes("workflow e") || normalized.includes("health")) {
+    return ShieldCheck;
   }
 
   return Activity;
@@ -360,12 +366,20 @@ export function mapAutomationHealthToServices(rows: AutomationHealthRecord[]) {
         status = minutesSince <= 5 ? "optimal" : minutesSince <= FRESHNESS_STALE_BADGE_MINUTES ? "stale" : "degraded";
       }
 
+      const derivedError =
+        row.errorMessage ??
+        (status === "degraded"
+          ? `${normalizeWorkflowName(workflowKey)} reported a degraded status without an explicit error message.`
+          : status === "stale"
+          ? `${normalizeWorkflowName(workflowKey)} heartbeat is stale.`
+          : null);
+
       const service: HealthService = {
         name: normalizeWorkflowName(workflowKey),
         status,
         last_run_at: row.lastRunAt,
         minutes_since: minutesSince,
-        error: row.errorMessage,
+        error: derivedError,
       };
 
       return service;

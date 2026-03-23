@@ -1,18 +1,19 @@
 import { createClient } from "npm:@supabase/supabase-js@2.94.0";
 import type { User } from "npm:@supabase/supabase-js@2.94.0";
-import { corsHeaders, jsonResponse } from "../_shared/cors.ts";
+import { corsResponse, jsonResponse } from "../_shared/cors.ts";
+import {
+  getSupabaseAnonKey,
+  getSupabaseServiceRoleKey,
+  getSupabaseUrl,
+} from "../_shared/supabase-env.ts";
+import { resolveTenantForUser } from "../_shared/tenant.ts";
 
 type HealthProxyBody = {
   client_id?: string | null;
+  client_key?: string | null;
 };
 
 const DEFAULT_WORKFLOW_E_STATUS_URL = "https://n8n-k7j4.onrender.com/webhook/health-status";
-
-function getEnv(name: string) {
-  const value = Deno.env.get(name);
-  if (!value) throw new Error(`Missing required env var: ${name}`);
-  return value;
-}
 
 function getOptionalEnv(name: string) {
   const value = Deno.env.get(name);
@@ -22,8 +23,8 @@ function getOptionalEnv(name: string) {
 }
 
 function getAuthClient(request: Request) {
-  const supabaseUrl = getEnv("SUPABASE_URL");
-  const anonKey = getEnv("SUPABASE_ANON_KEY");
+  const supabaseUrl = getSupabaseUrl();
+  const anonKey = getSupabaseAnonKey();
   const authHeader = request.headers.get("Authorization");
   if (!authHeader) return null;
 
@@ -45,8 +46,8 @@ function extractBearerToken(request: Request) {
 }
 
 function getServiceClient() {
-  const supabaseUrl = getEnv("SUPABASE_URL");
-  const serviceRoleKey = getEnv("SUPABASE_SERVICE_ROLE_KEY");
+  const supabaseUrl = getSupabaseUrl();
+  const serviceRoleKey = getSupabaseServiceRoleKey();
   return createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
@@ -105,44 +106,23 @@ function resolveWorkflowEUrls() {
   return urls;
 }
 
-async function parseRequestClientId(request: Request) {
+async function parseTenantReference(request: Request) {
   if (request.method === "GET") {
     const url = new URL(request.url);
-    const raw = (url.searchParams.get("client_id") || "").trim();
-    return raw || null;
+    return {
+      clientId: (url.searchParams.get("client_id") || "").trim() || null,
+      clientKey: (url.searchParams.get("client_key") || "").trim().toLowerCase() || null,
+    };
   }
   try {
     const body = (await request.json()) as HealthProxyBody;
-    const raw = typeof body.client_id === "string" ? body.client_id.trim() : "";
-    return raw || null;
+    return {
+      clientId: typeof body.client_id === "string" ? body.client_id.trim() || null : null,
+      clientKey: typeof body.client_key === "string" ? body.client_key.trim().toLowerCase() || null : null,
+    };
   } catch {
-    return null;
+    return { clientId: null, clientKey: null };
   }
-}
-
-async function verifyWorkspaceAccess(params: {
-  serviceClient: ReturnType<typeof getServiceClient>;
-  userId: string;
-  clientId: string | null;
-}) {
-  if (!params.clientId) return null;
-
-  const { data, error } = await params.serviceClient
-    .from("user_access")
-    .select("id")
-    .eq("user_id", params.userId)
-    .eq("client_id", params.clientId)
-    .eq("is_active", true)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(`Failed to verify workspace access: ${error.message}`);
-  }
-  if (!data?.id) {
-    throw new Error("You do not have access to this workspace.");
-  }
-
-  return params.clientId;
 }
 
 async function sleep(ms: number) {
@@ -187,24 +167,27 @@ async function parseUpstreamPayload(response: Response) {
 
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return corsResponse(request);
   }
 
   if (request.method !== "GET" && request.method !== "POST") {
-    return jsonResponse({ ok: false, error: "Method not allowed." }, 405);
+    return jsonResponse({ ok: false, error: "Method not allowed." }, 405, request);
   }
 
   try {
     const user = await requireAuthenticatedUser(request);
     const serviceClient = getServiceClient();
-    const clientId = await parseRequestClientId(request);
-    await verifyWorkspaceAccess({ serviceClient, userId: user.id, clientId });
+    const tenant = await resolveTenantForUser({
+      serviceClient,
+      userId: user.id,
+      tenant: await parseTenantReference(request),
+    });
 
     const urls = resolveWorkflowEUrls();
     let lastError = "Workflow E status request failed.";
 
     for (const baseUrl of urls) {
-      const url = appendClientId(baseUrl, clientId);
+      const url = appendClientId(baseUrl, tenant.clientId);
       try {
         const response = await fetchWithRetry(url);
         const upstreamPayload = await parseUpstreamPayload(response);
@@ -219,7 +202,8 @@ Deno.serve(async (request) => {
                 url: baseUrl,
               },
             },
-            200
+            200,
+            request
           );
         }
 
@@ -234,7 +218,7 @@ Deno.serve(async (request) => {
       }
     }
 
-    return jsonResponse({ ok: false, error: lastError }, 502);
+    return jsonResponse({ ok: false, error: lastError }, 502, request);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error.";
     const lower = message.toLowerCase();
@@ -244,6 +228,6 @@ Deno.serve(async (request) => {
         : lower.includes("do not have access")
         ? 403
         : 400;
-    return jsonResponse({ ok: false, error: message }, status);
+    return jsonResponse({ ok: false, error: message }, status, request);
   }
 });

@@ -1,0 +1,764 @@
+{
+  "name": "B",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        }
+      },
+      "id": "89e00a35-a536-41dd-ad4f-bc7c3a0c8503",
+      "name": "Cron (Every Minute)",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        -1184,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const since = new Date(Date.now() - 5*60*1000).toISOString();\nreturn [{ since }];"
+      },
+      "id": "c71e56df-aaed-44ac-9ffd-156d642d046b",
+      "name": "Since (5 minutes)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -960,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{'https://peenmmujciouzulfoykq.supabase.co/rest/v1/lead_events?event_type=eq.lead_created&created_at=gte.' + $json.since + '&select=id,client_id,lead_id,payload_json,created_at&order=created_at.desc&limit=50'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "80044f06-87ad-43c3-962e-ff4b18d0f589",
+      "name": "Fetch lead_created events (last 5m)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        -720,
+        192
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Split Events (robust)\n// Works whether the previous node returns:\n// - 0 items\n// - 1 empty item {}\n// - many items (normal case)\n\nconst items = $input.all();\n\n// If previous node returned nothing at all\nif (!items || items.length === 0) {\n  return [{ json: { _no_events: true } }];\n}\n\n// If previous node forced an empty item (like [{}])\nif (items.length === 1) {\n  const j = items[0].json || {};\n  if (Object.keys(j).length === 0) {\n    return [{ json: { _no_events: true } }];\n  }\n}\n\n// Normal case: output each event as its own item\nreturn items.map(i => ({ json: i.json }));\n"
+      },
+      "id": "3daae2f4-8074-4696-9ae4-03a4d4a5daee",
+      "name": "Split Events",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -480,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "61411322-fc5f-443f-b84e-33e252ff2cbb",
+              "leftValue": "={{ $json.lead_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "3fa55f7c-d715-4af8-8dfe-59169052c7c5",
+      "name": "IF Has lead_id",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -256,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "no_new_leads"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "5e5970b2-39d5-4f17-b0dd-3a29afbf238d",
+      "name": "No new leads (end)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        -32,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{'https://peenmmujciouzulfoykq.supabase.co/rest/v1/lead_events?lead_id=eq.' + $json.lead_id + '&event_type=eq.first_response_sent&select=id&limit=1'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5OTAyMDksImV4cCI6MjA4NDU2NjIwOX0.gF7JDAOiQC5M7JetScBDGmIfPOMz2p5DIqe-MjFoNXs"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fdd6ddb0-7338-44da-bb0b-601421b244a2",
+      "name": "Check already first_response_sent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        -256,
+        -32
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "url": "={{'https://peenmmujciouzulfoykq.supabase.co/rest/v1/leads?id=eq.' + $node['Split Events'].json.lead_id + '&client_id=eq.' + encodeURIComponent($node['Split Events'].json.client_id) + '&select=id,client_id,name,phone,email,status,clients(phone,timezone)&limit=1'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "488d564e-ed4b-4e29-a765-6d12287dcb69",
+      "name": "Get Lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        208,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const lead = Array.isArray($json) ? $json[0] : null;\nconst event = $node['Split Events'].json;\nconst clientPhone = lead?.clients?.phone ?? null;\n\nif (!lead?.id || !lead?.client_id) return [{ _skip:true, reason:'Lead missing tenant context' }];\nif (event?.client_id && lead.client_id !== event.client_id) return [{ _skip:true, reason:'Lead client_id does not match event client_id' }];\nif (!lead?.phone) return [{ _skip:true, reason:'No phone' }];\nif (!clientPhone) return [{ _skip:true, reason:'Client sender phone is not configured' }];\n\nreturn [{\n  lead_id: lead.id,\n  client_id: lead.client_id,\n  to: lead.phone,\n  from: clientPhone,\n  client_timezone: lead?.clients?.timezone ?? 'UTC',\n  name: lead.name || 'there'\n}];"
+      },
+      "id": "7f736176-d76f-4aec-8986-ae550a70d204",
+      "name": "Prepare SMS",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "32ca4e2d-afd0-4dc3-8b26-be7c3da7cfd8",
+              "leftValue": "={{ $json._skip }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "af6e5340-3ebd-45a4-a683-f3ae9b58f303",
+      "name": "IF No Phone (Skip)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        640,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.twilio.com/2010-04-01/Accounts/REPLACE_WITH_TWILIO_ACCOUNT_SID/Messages.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "To",
+              "value": "={{ $json.phone }}"
+            },
+            {
+              "name": "From",
+              "value": "={{ $json.from || $json.clients?.phone || \"\" }}"
+            },
+            {
+              "name": "Body",
+              "value": "=Hi {{ $('Get Lead').item.json.name }}, we received your request. We’ll contact you shortly."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "42726a0f-a60c-4937-9401-2971b1272364",
+      "name": "Twilio - Send Instant Response",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1040,
+        208
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "wEuQ3fWwApXuB7kg",
+          "name": "Twilio auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{'https://peenmmujciouzulfoykq.supabase.co/rest/v1/leads?id=eq.' + $('Get Lead').item.json.id + '&client_id=eq.' + encodeURIComponent($('Fetch lead_created events (last 5m)').item.json.client_id) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            },
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "contacted"
+            },
+            {
+              "name": "last_contacted_at",
+              "value": "={{$now}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "76888839-1ae6-42ad-a446-f42c1d48720a",
+      "name": "Update Lead (contacted)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1296,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://peenmmujciouzulfoykq.supabase.co/rest/v1/lead_events",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            },
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "client_id",
+              "value": "={{ $('Fetch lead_created events (last 5m)').item.json.client_id }}"
+            },
+            {
+              "name": "lead_id",
+              "value": "={{ $('Fetch lead_created events (last 5m)').item.json.lead_id }}"
+            },
+            {
+              "name": "event_type",
+              "value": "first_response_sent"
+            },
+            {
+              "name": "payload_json",
+              "value": "={{ { channel:'sms', sent_at:$now } }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "50c34ab5-a64a-4ce1-9d21-0203480eeb73",
+      "name": "Insert Event (first_response_sent)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1504,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "let phone = $('Get Lead').item.json.phone || \"\";\n\n// Remove spaces, dashes, brackets\nphone = phone.replace(/[\\s()-]/g, \"\");\n\n// Zimbabwe local format: 0771840862 → +263771840862\nif (phone.startsWith(\"0\")) {\n  phone = \"+263\" + phone.slice(1);\n}\n\n// 263771840862 → +263771840862\nif (phone.startsWith(\"263\")) {\n  phone = \"+\" + phone;\n}\n\n// Ensure it starts with +\nif (!phone.startsWith(\"+\")) {\n  return [{ json: { _skip: true, reason: \"Phone missing country code\" } }];\n}\n\n// Validate E.164 format (10–15 digits after +)\nconst isValid = /^\\+\\d{10,15}$/.test(phone);\n\nif (!isValid) {\n  return [{ json: { _skip: true, reason: \"Invalid phone format\" } }];\n}\n\nreturn [{ json: { ...$('Get Lead').item.json, phone } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        848,
+        416
+      ],
+      "id": "02a23fe2-267d-40f6-93d6-4dd226230616",
+      "name": "normalise phone"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://n8n-k7j4.onrender.com/webhook/health-ping",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "={{ 'application/json' }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"client_id\": \"{{$json.client_id || $('Fetch lead_created events (last 5m)').item.json.client_id || ''}}\",\n  \"workflow_name\": \"B\",\n  \"status\": \"{{ $json.status }}\",\n  \"error_message\": null,\n  \"last_run_at\": \"{{new Date().toISOString()}}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        320,
+        480
+      ],
+      "id": "3548d24c-447f-46d8-b58c-add708a593f1",
+      "name": "HTTP Request1",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://n8n-k7j4.onrender.com/webhook/health-ping",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"client_id\": \"{{ $json.client_id || $('Fetch lead_created events (last 5m)').item.json.client_id || '' }}\",\n  \"workflow_name\": \"B\",\n  \"status\": \"ok\",\n  \"error_message\": null,\n  \"last_run_at\": \"={{ new Date().toISOString() }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        736,
+        80
+      ],
+      "id": "62cc5b2e-dfcf-4651-99da-24e34359b6b6",
+      "name": "HTTP Request2",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "b2db06ab-317c-44ec-b387-771795367313",
+              "leftValue": "={{ $json.last_contacted_at }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b8a6ef0a-055a-4b3d-8c96-099965bd02e2",
+      "name": "check lead_id",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        256,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://n8n-k7j4.onrender.com/webhook/health-ping",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"client_id\": \"{{ $json.client_id || $('Fetch lead_created events (last 5m)').item.json.client_id || '' }}\",\n  \"workflow_name\": \"B\",\n  \"status\": \"ok\",\n  \"error_message\": null,\n  \"last_run_at\": \"{{ new Date().toISOString() }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1712,
+        320
+      ],
+      "id": "c7f3673d-283c-457f-ba26-708ce9cbf846",
+      "name": "send JSON to E",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "={{'https://peenmmujciouzulfoykq.supabase.co/rest/v1/leads?id=eq.' + $json.lead_id + '&select=id,last_contacted_at,status&limit=1'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        32,
+        32
+      ],
+      "id": "ed77fcb5-83be-4c7a-ab85-a4b4c286ad2a",
+      "name": "check if first message is sent",
+      "alwaysOutputData": true
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Cron (Every Minute)": {
+      "main": [
+        [
+          {
+            "node": "Since (5 minutes)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Since (5 minutes)": {
+      "main": [
+        [
+          {
+            "node": "Fetch lead_created events (last 5m)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch lead_created events (last 5m)": {
+      "main": [
+        [
+          {
+            "node": "Split Events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Events": {
+      "main": [
+        [
+          {
+            "node": "IF Has lead_id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check already first_response_sent": {
+      "main": [
+        []
+      ]
+    },
+    "Get Lead": {
+      "main": [
+        [
+          {
+            "node": "Prepare SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare SMS": {
+      "main": [
+        [
+          {
+            "node": "IF No Phone (Skip)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF No Phone (Skip)": {
+      "main": [
+        [],
+        [
+          {
+            "node": "normalise phone",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Twilio - Send Instant Response": {
+      "main": [
+        [
+          {
+            "node": "Update Lead (contacted)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Lead (contacted)": {
+      "main": [
+        [
+          {
+            "node": "Insert Event (first_response_sent)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Has lead_id": {
+      "main": [
+        [
+          {
+            "node": "check if first message is sent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No new leads (end)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "normalise phone": {
+      "main": [
+        [
+          {
+            "node": "Twilio - Send Instant Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Event (first_response_sent)": {
+      "main": [
+        [
+          {
+            "node": "send JSON to E",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No new leads (end)": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "check lead_id": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request2": {
+      "main": [
+        []
+      ]
+    },
+    "check if first message is sent": {
+      "main": [
+        [
+          {
+            "node": "check lead_id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "17c5ee1a-8c89-434c-a40c-788d7fc8f220",
+  "meta": {
+    "instanceId": "4bf975ace3f368cd438a6141ee2fc71975d8442c1b235cacd35cb39ef7b657f4"
+  },
+  "id": "JcIiVFoR5d8iguE56jf1f",
+  "tags": []
+}

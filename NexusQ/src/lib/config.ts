@@ -13,6 +13,7 @@ export type AppConfig = {
   supabaseAnonKey: string;
   authRedirectUrl?: string;
   passwordResetRedirectUrl?: string;
+  workflowADevFallbackUrl?: string;
 };
 
 export type AppConfigIssue = {
@@ -58,6 +59,7 @@ function getDefaultEnvSource() {
     VITE_SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY,
     VITE_AUTH_REDIRECT_URL: import.meta.env.VITE_AUTH_REDIRECT_URL,
     VITE_PASSWORD_RESET_REDIRECT_URL: import.meta.env.VITE_PASSWORD_RESET_REDIRECT_URL,
+    VITE_WORKFLOW_A_DEV_FALLBACK_URL: import.meta.env.VITE_WORKFLOW_A_DEV_FALLBACK_URL,
   } satisfies Partial<Record<string, unknown>>;
 }
 
@@ -90,6 +92,7 @@ export function readAppConfig(env?: Partial<Record<string, unknown>>) {
   const supabaseAnonKey = readEnvValue(source.VITE_SUPABASE_ANON_KEY);
   const authRedirectUrlValue = readEnvValue(source.VITE_AUTH_REDIRECT_URL);
   const passwordResetRedirectUrlValue = readEnvValue(source.VITE_PASSWORD_RESET_REDIRECT_URL);
+  const workflowADevFallbackUrlValue = readEnvValue(source.VITE_WORKFLOW_A_DEV_FALLBACK_URL);
 
   let supabaseUrl = "";
   if (!supabaseUrlValue) {
@@ -125,6 +128,11 @@ export function readAppConfig(env?: Partial<Record<string, unknown>>) {
     passwordResetRedirectUrlValue,
     issues
   );
+  const workflowADevFallbackUrl = validateOptionalUrl(
+    "VITE_WORKFLOW_A_DEV_FALLBACK_URL",
+    workflowADevFallbackUrlValue,
+    issues
+  );
 
   if (issues.length) {
     return {
@@ -140,6 +148,7 @@ export function readAppConfig(env?: Partial<Record<string, unknown>>) {
       supabaseAnonKey: supabaseAnonKey!,
       authRedirectUrl,
       passwordResetRedirectUrl,
+      workflowADevFallbackUrl,
     } satisfies AppConfig,
   };
 }

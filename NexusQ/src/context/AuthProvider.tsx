@@ -2,7 +2,9 @@ import React from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { toast } from "sonner";
 import {
+  ensureLiveSession,
   getCurrentSession,
+  isInvalidSessionStateError,
   signOutCurrentUser,
   subscribeToAuthChanges,
 } from "@/lib/auth";
@@ -101,8 +103,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const currentUser = incomingSession.user;
-      setSession(incomingSession);
+      let liveSession: Session;
+      try {
+        liveSession = await ensureLiveSession(incomingSession, { clearInvalidSession: true });
+      } catch (sessionError) {
+        if (requestToken !== requestTokenRef.current) {
+          return;
+        }
+
+        setSession(null);
+        setUser(null);
+        setProfile(null);
+        setAccessRows([]);
+        setClientId(null);
+        setRole(null);
+        setStoredActiveClientId(null);
+        setSessionReady(true);
+        setProfileReady(true);
+        setAccessReady(true);
+        setAuthError(
+          isInvalidSessionStateError(sessionError)
+            ? sessionError.message
+            : sessionError instanceof Error
+              ? sessionError.message
+              : "Unable to restore your session."
+        );
+        setLoading(false);
+        return;
+      }
+
+      const currentUser = liveSession.user;
+      setSession(liveSession);
       setUser(currentUser);
       setSessionReady(true);
 
@@ -175,10 +206,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const init = async () => {
       const { data, error } = await getCurrentSession();
       if (!mounted) return;
+      await applySessionState(data.session);
+      if (!mounted) return;
       if (error) {
         setAuthError(error.message);
       }
-      await applySessionState(data.session);
     };
 
     void init();
