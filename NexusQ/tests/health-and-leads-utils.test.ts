@@ -11,6 +11,7 @@ import {
   mapAutomationHealthToServices,
   parseTimestampMs,
   staleSignalLabel,
+  upsertWorkflowService,
 } from "../src/features/health/utils.ts";
 
 test("lead helpers normalize pipeline stages and event severity consistently", () => {
@@ -66,4 +67,36 @@ test("automation health mapping derives a useful fallback error for degraded row
   assert.equal(services.length, 1);
   assert.equal(services[0]?.status, "degraded");
   assert.match(services[0]?.error ?? "", /degraded status/i);
+});
+
+test("workflow service upsert replaces an existing workflow snapshot without duplicating it", () => {
+  const services = upsertWorkflowService(
+    [
+      {
+        name: "Workflow E",
+        status: "unknown",
+        last_run_at: null,
+        minutes_since: null,
+        error: "No health signal received yet.",
+      },
+      {
+        name: "Workflow B",
+        status: "optimal",
+        last_run_at: "2026-03-23T12:00:00.000Z",
+        minutes_since: 0,
+        error: null,
+      },
+    ],
+    {
+      name: "Workflow E",
+      status: "optimal",
+      last_run_at: "2026-03-23T12:01:00.000Z",
+      minutes_since: 0,
+      error: null,
+    }
+  );
+
+  assert.equal(services.filter((service) => service.name === "Workflow E").length, 1);
+  assert.equal(services.find((service) => service.name === "Workflow E")?.status, "optimal");
+  assert.equal(services.find((service) => service.name === "Workflow B")?.status, "optimal");
 });

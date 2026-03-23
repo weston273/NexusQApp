@@ -53,8 +53,9 @@ if (-not $SkipDbPush) {
 
 if (-not $SkipFunctionDeploy) {
   Write-Host "Deploying edge functions..." -ForegroundColor Yellow
-  Invoke-SupabaseCli -Arguments @("functions", "deploy", "workflow-a-proxy")
-  Invoke-SupabaseCli -Arguments @("functions", "deploy", "workflow-e-proxy")
+  Invoke-SupabaseCli -Arguments @("functions", "deploy", "workflow-a-proxy", "--no-verify-jwt")
+  Invoke-SupabaseCli -Arguments @("functions", "deploy", "workflow-d-proxy", "--no-verify-jwt")
+  Invoke-SupabaseCli -Arguments @("functions", "deploy", "workflow-e-proxy", "--no-verify-jwt")
 }
 
 Write-Host ""

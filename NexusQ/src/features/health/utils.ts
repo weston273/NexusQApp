@@ -29,6 +29,17 @@ export function normalizeWorkflowName(key: WorkflowKey) {
   return `Workflow ${key}`;
 }
 
+export function upsertWorkflowService(
+  services: HealthService[],
+  nextService: HealthService
+) {
+  const workflowKey = inferWorkflowKey(nextService.name);
+  if (!workflowKey) return services;
+
+  const filtered = services.filter((service) => inferWorkflowKey(service.name) !== workflowKey);
+  return [...filtered, nextService];
+}
+
 export function inferWorkflowKey(serviceName: string): WorkflowKey | null {
   const normalized = serviceName.toLowerCase().trim();
 

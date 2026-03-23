@@ -19,6 +19,12 @@ type PersistenceSnapshot = {
   lead_status: string | null;
 };
 
+type DirectPersistenceResult = {
+  warnings: string[];
+};
+
+const DEFAULT_WORKFLOW_D_URL = "https://n8n-k7j4.onrender.com/webhook/pipeline-update";
+
 function getOptionalEnv(name: string) {
   const value = Deno.env.get(name);
   if (!value) return null;
@@ -26,26 +32,49 @@ function getOptionalEnv(name: string) {
   return trimmed ? trimmed : null;
 }
 
-function resolveWorkflowDUrl() {
+function normalizeWorkflowDUrl(candidate: string) {
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return [];
+
+    const urls: string[] = [parsed.toString()];
+    const canonical = new URL(parsed.toString());
+    canonical.pathname = "/webhook/pipeline-update";
+
+    const canonicalUrl = canonical.toString();
+    if (!urls.includes(canonicalUrl)) {
+      urls.push(canonicalUrl);
+    }
+
+    return urls;
+  } catch {
+    return [];
+  }
+}
+
+function resolveWorkflowDUrls() {
   const candidates = [
     getOptionalEnv("WORKFLOW_D_URL"),
     getOptionalEnv("WORKFLOW_D_WEBHOOK_URL"),
     getOptionalEnv("WORKFLOW_D_FALLBACK_URL"),
+    DEFAULT_WORKFLOW_D_URL,
   ];
 
+  const urls: string[] = [];
   for (const candidate of candidates) {
     if (!candidate) continue;
-    try {
-      const parsed = new URL(candidate);
-      if (parsed.protocol === "http:" || parsed.protocol === "https:") {
-        return candidate;
+    for (const resolved of normalizeWorkflowDUrl(candidate)) {
+      if (!urls.includes(resolved)) {
+        urls.push(resolved);
       }
-    } catch {
-      // Ignore malformed URL and continue to next candidate.
     }
   }
 
-  throw new Error("No valid Workflow D URL configured.");
+  if (!urls.length) {
+    throw new Error("No valid Workflow D URL configured.");
+  }
+
+  return urls;
 }
 
 function isUuid(value: string) {
@@ -59,6 +88,19 @@ function normalizeStage(rawValue: unknown): PipelineStage {
   if (value === "quoted" || value.includes("quote")) return "quoted";
   if (value === "booked" || value.includes("book") || value.includes("won") || value.includes("deal")) return "booked";
   return "new";
+}
+
+function probabilityForStage(stage: PipelineStage) {
+  if (stage === "qualifying") return 35;
+  if (stage === "quoted") return 60;
+  if (stage === "booked") return 100;
+  return 10;
+}
+
+function eventTypeForStage(stage: PipelineStage) {
+  if (stage === "quoted") return "quote_sent";
+  if (stage === "booked") return "booking_created";
+  return "status_changed";
 }
 
 function parseNumericOrNull(rawValue: unknown) {
@@ -208,6 +250,110 @@ async function verifyPersistence(params: {
   return lastSnapshot;
 }
 
+async function applyDirectPersistenceFallback(params: {
+  serviceClient: ReturnType<typeof getServiceClient>;
+  leadId: string;
+  clientId: string;
+  stage: PipelineStage;
+  value: number | null;
+}): Promise<DirectPersistenceResult> {
+  const { serviceClient, leadId, clientId, stage, value } = params;
+  const warnings: string[] = [];
+  const timestamp = new Date().toISOString();
+  const probability = probabilityForStage(stage);
+
+  const { data: pipelineRow, error: pipelineLookupError } = await serviceClient
+    .from("pipeline")
+    .select("id")
+    .eq("lead_id", leadId)
+    .eq("client_id", clientId)
+    .maybeSingle();
+
+  if (pipelineLookupError) {
+    throw new Error(`Fallback pipeline lookup failed: ${pipelineLookupError.message}`);
+  }
+
+  if (pipelineRow?.id) {
+    const { error: pipelineUpdateError } = await serviceClient
+      .from("pipeline")
+      .update({
+        stage,
+        value,
+        probability,
+        updated_at: timestamp,
+      })
+      .eq("id", pipelineRow.id)
+      .eq("client_id", clientId);
+
+    if (pipelineUpdateError) {
+      throw new Error(`Fallback pipeline update failed: ${pipelineUpdateError.message}`);
+    }
+  } else {
+    const { error: pipelineInsertError } = await serviceClient
+      .from("pipeline")
+      .insert({
+        lead_id: leadId,
+        client_id: clientId,
+        stage,
+        value,
+        probability,
+        updated_at: timestamp,
+      });
+
+    if (pipelineInsertError) {
+      throw new Error(`Fallback pipeline insert failed: ${pipelineInsertError.message}`);
+    }
+  }
+
+  const { error: leadUpdateError } = await serviceClient
+    .from("leads")
+    .update({ status: stage })
+    .eq("id", leadId)
+    .eq("client_id", clientId);
+
+  if (leadUpdateError) {
+    throw new Error(`Fallback lead status update failed: ${leadUpdateError.message}`);
+  }
+
+  const { error: eventInsertError } = await serviceClient.from("lead_events").insert({
+    client_id: clientId,
+    lead_id: leadId,
+    event_type: eventTypeForStage(stage),
+    payload_json: {
+      client_id: clientId,
+      lead_id: leadId,
+      stage,
+      status: stage,
+      value,
+      source: "workflow-d-proxy-fallback",
+      applied_at: timestamp,
+    },
+  });
+
+  if (eventInsertError) {
+    warnings.push(`Fallback event insert failed: ${eventInsertError.message}`);
+  }
+
+  const { error: healthUpsertError } = await serviceClient
+    .from("automation_health")
+    .upsert(
+      {
+        client_id: clientId,
+        workflow_name: "D",
+        status: "optimal",
+        last_run_at: timestamp,
+        error_message: null,
+      },
+      { onConflict: "client_id,workflow_name" }
+    );
+
+  if (healthUpsertError) {
+    warnings.push(`Fallback health sync failed: ${healthUpsertError.message}`);
+  }
+
+  return { warnings };
+}
+
 async function parseWorkflowPayload(response: Response) {
   const text = (await response.text()).trim();
   if (!text) return {};
@@ -292,7 +438,7 @@ Deno.serve(async (request) => {
       );
     }
 
-    const workflowUrl = resolveWorkflowDUrl();
+    const workflowUrls = resolveWorkflowDUrls();
     const workflowSecret = getOptionalEnv("NEXUSQ_PIPELINE_SECRET");
     const upstreamPayload = {
       lead_id: leadId,
@@ -302,47 +448,79 @@ Deno.serve(async (request) => {
       value,
     };
 
-    const workflowResponse = await forwardWorkflowD({
-      workflowUrl,
-      secret: workflowSecret,
-      payload: upstreamPayload,
-    });
+    let workflowResponse: Response | null = null;
+    let workflowPayload: Record<string, unknown> = {};
+    let lastWorkflowError = "Workflow D request failed.";
 
-    const workflowPayload = await parseWorkflowPayload(workflowResponse);
-    const workflowOk = workflowResponse.ok && workflowPayload?.ok !== false && workflowPayload?._error !== true;
-    if (!workflowOk) {
-      const workflowMessage =
-        (typeof workflowPayload?.error === "string" && workflowPayload.error) ||
-        (typeof workflowPayload?.message === "string" && workflowPayload.message) ||
-        `Workflow D returned HTTP ${workflowResponse.status}`;
-      return jsonResponse(
-        {
-          ok: false,
-          error: workflowMessage,
-          upstream_status: workflowResponse.status,
-          upstream_payload: workflowPayload,
-        },
-        502
-      );
+    for (const workflowUrl of workflowUrls) {
+      try {
+        const response = await forwardWorkflowD({
+          workflowUrl,
+          secret: workflowSecret,
+          payload: upstreamPayload,
+        });
+        const payload = await parseWorkflowPayload(response);
+        const workflowOk = response.ok && payload?.ok !== false && payload?._error !== true;
+
+        if (workflowOk) {
+          workflowResponse = response;
+          workflowPayload = payload;
+          break;
+        }
+
+        const workflowMessage =
+          (typeof payload?.error === "string" && payload.error) ||
+          (typeof payload?.message === "string" && payload.message) ||
+          `Workflow D returned HTTP ${response.status}`;
+        workflowPayload = payload;
+        lastWorkflowError = workflowMessage;
+      } catch (workflowError) {
+        lastWorkflowError =
+          workflowError instanceof Error ? workflowError.message : "Workflow D network request failed.";
+      }
     }
 
-    const persisted = await verifyPersistence({
+    let persisted = await verifyPersistence({
       serviceClient,
       leadId,
       expectedStage: stage,
     });
 
+    let fallbackApplied = false;
+    let fallbackWarnings: string[] = [];
+
+    if (!workflowResponse || !persisted.verified) {
+      fallbackApplied = true;
+      const fallbackResult = await applyDirectPersistenceFallback({
+        serviceClient,
+        leadId,
+        clientId: context.clientId,
+        stage,
+        value,
+      });
+      fallbackWarnings = fallbackResult.warnings;
+      persisted = await verifyPersistence({
+        serviceClient,
+        leadId,
+        expectedStage: stage,
+      });
+    }
+
     if (!persisted.verified) {
       return jsonResponse(
         {
           ok: false,
-          error: "Pipeline update was acknowledged but did not persist in database state.",
+          error: workflowResponse
+            ? "Pipeline update was acknowledged but did not persist in database state."
+            : lastWorkflowError,
           lead_id: leadId,
           expected_stage: stage,
           persisted,
           upstream_payload: workflowPayload,
+          fallback_applied: fallbackApplied,
+          fallback_warnings: fallbackWarnings,
         },
-        409
+        workflowResponse ? 409 : 502
       );
     }
 
@@ -355,6 +533,14 @@ Deno.serve(async (request) => {
         value,
         persisted,
         upstream_payload: workflowPayload,
+        fallback_applied: fallbackApplied,
+        fallback_warnings: fallbackWarnings,
+        warning:
+          fallbackApplied && workflowResponse
+            ? "Workflow D upstream did not persist the update. Applied direct server-side fallback."
+            : !workflowResponse
+            ? lastWorkflowError
+            : null,
       },
       200
     );

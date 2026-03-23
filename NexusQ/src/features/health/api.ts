@@ -57,7 +57,7 @@ function normalizeHealthPayload(rawPayload: Record<string, unknown> | null): Hea
 
   const payload = toHealthPayloadFromUnknown(rawPayload);
   if (payload.ok === false) {
-    throw new Error("Workflow E proxy returned an error payload.");
+    throw new Error("Health gateway returned an error payload.");
   }
 
   return payload;
@@ -65,7 +65,7 @@ function normalizeHealthPayload(rawPayload: Record<string, unknown> | null): Hea
 
 export async function fetchHealthStatus(clientId: string | null): Promise<FetchHealthStatusResult> {
   if (!clientId) {
-    throw new HealthFetchError("Active workspace client_id is required before fetching health status.", []);
+    throw new HealthFetchError("An active workspace is required before fetching health status.", []);
   }
 
   const checkedAt = new Date().toISOString();
@@ -105,7 +105,7 @@ export async function fetchHealthStatus(clientId: string | null): Promise<FetchH
       error: message,
     });
 
-    throw new HealthFetchError(`Workflow E proxy unavailable. ${message}`, [probe]);
+    throw new HealthFetchError(`Health gateway unavailable. ${message}`, [probe]);
   }
 }
 

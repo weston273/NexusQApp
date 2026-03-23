@@ -195,13 +195,7 @@ Deno.serve(async (request) => {
           response.ok && upstreamPayload?._error !== true && upstreamPayload?.ok !== false;
         if (upstreamOk) {
           return jsonResponse(
-            {
-              ...(upstreamPayload || {}),
-              _proxy: {
-                status: response.status,
-                url: baseUrl,
-              },
-            },
+            { ...(upstreamPayload || {}) },
             200,
             request
           );

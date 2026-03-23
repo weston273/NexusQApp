@@ -43,7 +43,7 @@ Frontend workspace-linking flow uses the same normalization rule before calling 
 - `workflow-d-proxy`
   - Verifies caller auth token.
   - Resolves lead context and verifies caller has active `user_access` to the lead client.
-  - Resolves Workflow D URL from `WORKFLOW_D_URL` (preferred), then `WORKFLOW_D_WEBHOOK_URL`, then `WORKFLOW_D_FALLBACK_URL`.
+  - Tries Workflow D URLs from `WORKFLOW_D_URL` (preferred), then `WORKFLOW_D_WEBHOOK_URL`, then `WORKFLOW_D_FALLBACK_URL`, then the canonical `/webhook/pipeline-update` route.
   - Injects `x-nexusq-secret` server-side when `NEXUSQ_PIPELINE_SECRET` is configured.
   - Verifies that `pipeline.stage` and `leads.status` actually persisted before returning success.
   - Returns normalized JSON to frontend.
@@ -92,12 +92,12 @@ Optional:
 ## Deploy
 
 ```bash
-supabase functions deploy create-access-key
-supabase functions deploy revoke-access-key
-supabase functions deploy workspace-bootstrap
-supabase functions deploy workflow-d-proxy
-supabase functions deploy workflow-a-proxy
-supabase functions deploy workflow-e-proxy
+supabase functions deploy create-access-key --no-verify-jwt
+supabase functions deploy revoke-access-key --no-verify-jwt
+supabase functions deploy workspace-bootstrap --no-verify-jwt
+supabase functions deploy workflow-d-proxy --no-verify-jwt
+supabase functions deploy workflow-a-proxy --no-verify-jwt
+supabase functions deploy workflow-e-proxy --no-verify-jwt
 ```
 
 If running locally:

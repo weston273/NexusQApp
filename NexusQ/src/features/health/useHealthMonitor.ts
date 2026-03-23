@@ -30,6 +30,8 @@ import {
   dedupeLogs,
   dedupeServices,
   hasIncidentStatus,
+  normalizeWorkflowName,
+  upsertWorkflowService,
 } from "@/features/health/utils";
 
 export function useHealthMonitor() {
@@ -108,18 +110,26 @@ export function useHealthMonitor() {
           if (fallbackServices.length) {
             baseServices = fallbackServices;
             supplementalLogs.push(
-              addSystemLog("Workflow E proxy returned no service payload. Loaded fallback snapshot from automation_health.", "warning")
+              addSystemLog("The health gateway returned no workflow snapshot. Loaded the cached health snapshot instead.", "warning")
             );
           }
         } catch (fallbackError: unknown) {
           supplementalLogs.push(
             addSystemLog(
-              `Workflow fallback query failed: ${getErrorMessage(fallbackError, "Unknown error")}`,
+              `Health snapshot recovery failed: ${getErrorMessage(fallbackError, "Unknown error")}`,
               "warning"
             )
           );
         }
       }
+
+      baseServices = upsertWorkflowService(baseServices, {
+        name: normalizeWorkflowName("E"),
+        status: "optimal",
+        last_run_at: result.payload.generated_at ?? new Date().toISOString(),
+        minutes_since: 0,
+        error: null,
+      });
 
       const incomingServices = buildWorkflowServices(baseServices, previousServicesRef.current);
       const remoteLogs = dedupeLogs(result.payload.logs ?? []);
@@ -197,14 +207,23 @@ export function useHealthMonitor() {
         try {
           const fallbackServices = await fetchAutomationHealthFallback(clientId);
           if (fallbackServices.length) {
-            const fallbackSnapshot = buildWorkflowServices(fallbackServices, previousServicesRef.current);
+            const fallbackSnapshot = buildWorkflowServices(
+              upsertWorkflowService(fallbackServices, {
+                name: normalizeWorkflowName("E"),
+                status: "degraded",
+                last_run_at: new Date().toISOString(),
+                minutes_since: 0,
+                error: errorMessage,
+              }),
+              previousServicesRef.current
+            );
             setPayload(null);
             setServiceSnapshot(fallbackSnapshot);
             persistServices(fallbackSnapshot);
             previousServicesRef.current = fallbackSnapshot;
             appendLogs([
               addSystemLog(`Health refresh failed: ${errorMessage}`, "warning"),
-              addSystemLog("Loaded automation_health fallback after probe failure.", "warning"),
+              addSystemLog("Loaded the cached health snapshot after the gateway probe failed.", "warning"),
             ]);
             setLastRefreshAt(new Date());
             return;

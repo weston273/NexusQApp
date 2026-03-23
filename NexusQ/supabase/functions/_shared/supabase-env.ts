@@ -5,24 +5,24 @@ function getOptionalEnv(name: string) {
   return trimmed ? trimmed : null;
 }
 
-function getRequiredEnv(customName: string, fallbackName: string) {
-  const customValue = getOptionalEnv(customName);
-  if (customValue) return customValue;
+function getRequiredEnv(primaryName: string, secondaryName: string) {
+  const primaryValue = getOptionalEnv(primaryName);
+  if (primaryValue) return primaryValue;
 
-  const fallbackValue = getOptionalEnv(fallbackName);
-  if (fallbackValue) return fallbackValue;
+  const secondaryValue = getOptionalEnv(secondaryName);
+  if (secondaryValue) return secondaryValue;
 
-  throw new Error(`Missing required env var: ${customName} or ${fallbackName}`);
+  throw new Error(`Missing required env var: ${primaryName} or ${secondaryName}`);
 }
 
 export function getSupabaseUrl() {
-  return getRequiredEnv("NEXUSQ_SUPABASE_URL", "SUPABASE_URL");
+  return getRequiredEnv("SUPABASE_URL", "NEXUSQ_SUPABASE_URL");
 }
 
 export function getSupabaseAnonKey() {
-  return getRequiredEnv("NEXUSQ_SUPABASE_ANON_KEY", "SUPABASE_ANON_KEY");
+  return getRequiredEnv("SUPABASE_ANON_KEY", "NEXUSQ_SUPABASE_ANON_KEY");
 }
 
 export function getSupabaseServiceRoleKey() {
-  return getRequiredEnv("NEXUSQ_SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_SERVICE_ROLE_KEY");
+  return getRequiredEnv("SUPABASE_SERVICE_ROLE_KEY", "NEXUSQ_SUPABASE_SERVICE_ROLE_KEY");
 }
