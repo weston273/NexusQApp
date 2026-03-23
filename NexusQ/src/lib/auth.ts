@@ -1,15 +1,16 @@
 import type { AuthChangeEvent, Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { getAppConfig } from "@/lib/config";
+import { notifyAuthStateCleared } from "@/lib/auth-events";
+import {
+  InvalidSessionStateError,
+  MissingSessionError,
+  isInvalidSessionStateError,
+  isMissingSessionError,
+  isSessionInvalidMessage,
+} from "@/lib/auth-errors";
 
 type AuthStateChangeListener = (event: AuthChangeEvent, session: Session | null) => void;
-
-export class InvalidSessionStateError extends Error {
-  constructor(message = "Your saved session is no longer valid. Please sign in again.") {
-    super(message);
-    this.name = "InvalidSessionStateError";
-  }
-}
 
 function getSupabaseAuthStoragePrefixes() {
   try {
@@ -42,20 +43,7 @@ export function clearPersistedAuthState() {
   const prefixes = getSupabaseAuthStoragePrefixes();
   clearStorageByPrefixes(window.localStorage, prefixes);
   clearStorageByPrefixes(window.sessionStorage, prefixes);
-}
-
-function isSessionInvalidMessage(message: string | undefined | null) {
-  const lower = String(message ?? "").toLowerCase();
-  return (
-    lower.includes("invalid jwt") ||
-    lower.includes("jwt expired") ||
-    lower.includes("refresh token") ||
-    lower.includes("session expired") ||
-    lower.includes("invalid refresh token") ||
-    lower.includes("session_not_found") ||
-    lower.includes("session not found") ||
-    lower.includes("session from session_id claim")
-  );
+  notifyAuthStateCleared();
 }
 
 async function validateSession(session: Session) {
@@ -78,9 +66,7 @@ async function clearInvalidSessionState() {
   }
 }
 
-export function isInvalidSessionStateError(error: unknown): error is InvalidSessionStateError {
-  return error instanceof InvalidSessionStateError;
-}
+export { InvalidSessionStateError, MissingSessionError, isInvalidSessionStateError, isMissingSessionError };
 
 export async function ensureLiveSession(
   session: Session | null,
@@ -118,7 +104,7 @@ export async function ensureActiveSession(options?: { forceRefresh?: boolean; cl
       if (isSessionInvalidMessage(error?.message)) {
         throw new InvalidSessionStateError();
       }
-      throw new Error(error?.message || "You are not signed in. Please sign in again.");
+      throw new MissingSessionError(error?.message || undefined);
     }
 
     try {
@@ -133,7 +119,7 @@ export async function ensureActiveSession(options?: { forceRefresh?: boolean; cl
     throw new Error(`Failed to resolve session: ${error.message}`);
   }
   if (!data.session) {
-    throw new Error("You are not signed in. Please sign in again.");
+    throw new MissingSessionError();
   }
 
   try {
@@ -226,6 +212,13 @@ export async function getCurrentSession() {
     const session = await ensureActiveSession({ clearInvalidSession: true });
     return { data: { session }, error: null };
   } catch (error) {
+    if (isMissingSessionError(error)) {
+      return {
+        data: { session: null },
+        error: null,
+      };
+    }
+
     if (isInvalidSessionStateError(error) || (error instanceof Error && isSessionInvalidMessage(error.message))) {
       return {
         data: { session: null },

@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.94.0";
 import type { User } from "npm:@supabase/supabase-js@2.94.0";
 import { corsHeaders, jsonResponse } from "../_shared/cors.ts";
+import { getSupabaseAnonKey, getSupabaseServiceRoleKey, getSupabaseUrl } from "../_shared/supabase-env.ts";
 
 type PipelineStage = "new" | "qualifying" | "quoted" | "booked";
 
@@ -17,12 +18,6 @@ type PersistenceSnapshot = {
   pipeline_stage: string | null;
   lead_status: string | null;
 };
-
-function getEnv(name: string) {
-  const value = Deno.env.get(name);
-  if (!value) throw new Error(`Missing required env var: ${name}`);
-  return value;
-}
 
 function getOptionalEnv(name: string) {
   const value = Deno.env.get(name);
@@ -73,8 +68,8 @@ function parseNumericOrNull(rawValue: unknown) {
 }
 
 function getAuthClient(request: Request) {
-  const supabaseUrl = getEnv("SUPABASE_URL");
-  const anonKey = getEnv("SUPABASE_ANON_KEY");
+  const supabaseUrl = getSupabaseUrl();
+  const anonKey = getSupabaseAnonKey();
   const authHeader = request.headers.get("Authorization");
   if (!authHeader) return null;
 
@@ -96,8 +91,8 @@ function extractBearerToken(request: Request) {
 }
 
 function getServiceClient() {
-  const supabaseUrl = getEnv("SUPABASE_URL");
-  const serviceRoleKey = getEnv("SUPABASE_SERVICE_ROLE_KEY");
+  const supabaseUrl = getSupabaseUrl();
+  const serviceRoleKey = getSupabaseServiceRoleKey();
   return createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });

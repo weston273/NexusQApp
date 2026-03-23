@@ -3,6 +3,7 @@ import type { User } from "npm:@supabase/supabase-js@2.94.0";
 import { generateRawAccessKey, isAccessRole, normalizeAccessKey, normalizeIsoDateOrNull, sha256Hex } from "../_shared/access-key.ts";
 import type { AccessRole } from "../_shared/access-key.ts";
 import { corsHeaders, jsonResponse } from "../_shared/cors.ts";
+import { getSupabaseAnonKey, getSupabaseServiceRoleKey, getSupabaseUrl } from "../_shared/supabase-env.ts";
 
 type WorkspaceBootstrapAction = "create_workspace" | "join_workspace";
 
@@ -18,15 +19,9 @@ type WorkspaceBootstrapRequest = {
   initial_key_expires_at?: string | null;
 };
 
-function getEnv(name: string) {
-  const value = Deno.env.get(name);
-  if (!value) throw new Error(`Missing required env var: ${name}`);
-  return value;
-}
-
 function getAuthClient(request: Request) {
-  const supabaseUrl = getEnv("SUPABASE_URL");
-  const anonKey = getEnv("SUPABASE_ANON_KEY");
+  const supabaseUrl = getSupabaseUrl();
+  const anonKey = getSupabaseAnonKey();
   const authHeader = request.headers.get("Authorization");
   if (!authHeader) return null;
 
@@ -48,8 +43,8 @@ function extractBearerToken(request: Request) {
 }
 
 function getServiceClient() {
-  const supabaseUrl = getEnv("SUPABASE_URL");
-  const serviceRoleKey = getEnv("SUPABASE_SERVICE_ROLE_KEY");
+  const supabaseUrl = getSupabaseUrl();
+  const serviceRoleKey = getSupabaseServiceRoleKey();
   return createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });

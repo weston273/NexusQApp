@@ -8,6 +8,7 @@ import {
   signOutCurrentUser,
   subscribeToAuthChanges,
 } from "@/lib/auth";
+import { subscribeToAuthStateCleared } from "@/lib/auth-events";
 import {
   fetchCurrentUserAccessRows,
   fetchCurrentUserProfile,
@@ -219,9 +220,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       void applySessionState(nextSession);
     });
 
+    const unsubscribeAuthStateCleared = subscribeToAuthStateCleared(() => {
+      void applySessionState(null);
+    });
+
     return () => {
       mounted = false;
       data.subscription.unsubscribe();
+      unsubscribeAuthStateCleared();
     };
   }, [applySessionState]);
 
