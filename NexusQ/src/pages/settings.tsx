@@ -14,6 +14,7 @@ import {
   BarChart3,
   Timer,
   Inbox,
+  Info,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -39,6 +40,7 @@ const navCards = [
   { label: "Lead Intake", icon: UserPlus, path: "/intake" },
   { label: "System Health", icon: Activity, path: "/health" },
   { label: "Notifications", icon: Inbox, path: "/notifications" },
+  { label: "About NexusQ", icon: Info, path: "/about" },
   { label: "Settings", icon: Settings2, path: "/settings" },
 ];
 
@@ -48,6 +50,7 @@ export function SettingsPage() {
   const { setTheme } = useAppTheme();
   const [settings, setSettings] = React.useState<AppSettings>(() => loadAppSettings());
   const [telemetry, setTelemetry] = React.useState(() => getTelemetryEvents().slice(0, 8));
+  const activeWorkspace = accessRows.find((row) => row.client_id === clientId) ?? null;
 
   const saveSettings = () => {
     setTheme(settings.theme);
@@ -236,7 +239,13 @@ export function SettingsPage() {
         </Card>
       </div>
 
-      <WorkspaceSummaryCard clientId={clientId} role={role} workspaceCount={accessRows.length} />
+      <WorkspaceSummaryCard
+        clientId={clientId}
+        workspaceName={activeWorkspace?.client_name ?? null}
+        workspaceKey={activeWorkspace?.client_key ?? null}
+        role={role}
+        workspaceCount={accessRows.length}
+      />
 
       {clientId ? (
         <WorkspaceAccessKeys

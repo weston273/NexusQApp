@@ -16,6 +16,7 @@ type PipelineUpdateRequest = {
 type PersistenceSnapshot = {
   verified: boolean;
   pipeline_stage: string | null;
+  pipeline_value: number | null;
   lead_status: string | null;
 };
 
@@ -107,6 +108,12 @@ function parseNumericOrNull(rawValue: unknown) {
   if (rawValue == null || rawValue === "") return null;
   const value = Number(rawValue);
   return Number.isFinite(value) ? value : null;
+}
+
+function valuesMatch(actualValue: number | null, expectedValue: number | null) {
+  if (expectedValue == null) return true;
+  if (actualValue == null) return false;
+  return Math.abs(actualValue - expectedValue) < 0.0001;
 }
 
 function getAuthClient(request: Request) {
@@ -203,11 +210,13 @@ async function verifyPersistence(params: {
   serviceClient: ReturnType<typeof getServiceClient>;
   leadId: string;
   expectedStage: PipelineStage;
+  expectedValue: number | null;
 }): Promise<PersistenceSnapshot> {
-  const { serviceClient, leadId, expectedStage } = params;
+  const { serviceClient, leadId, expectedStage, expectedValue } = params;
   let lastSnapshot: PersistenceSnapshot = {
     verified: false,
     pipeline_stage: null,
+    pipeline_value: null,
     lead_status: null,
   };
 
@@ -215,7 +224,7 @@ async function verifyPersistence(params: {
     const [{ data: pipelineRow, error: pipelineError }, { data: leadRow, error: leadError }] = await Promise.all([
       serviceClient
         .from("pipeline")
-        .select("stage")
+        .select("stage, value")
         .eq("lead_id", leadId)
         .maybeSingle(),
       serviceClient
@@ -229,12 +238,17 @@ async function verifyPersistence(params: {
     if (leadError) throw new Error(`Lead verification failed: ${leadError.message}`);
 
     const pipelineStage = (pipelineRow?.stage as string | null) ?? null;
+    const pipelineValue = parseNumericOrNull(pipelineRow?.value);
     const leadStatus = (leadRow?.status as string | null) ?? null;
-    const verified = pipelineStage === expectedStage && leadStatus === expectedStage;
+    const verified =
+      pipelineStage === expectedStage &&
+      leadStatus === expectedStage &&
+      valuesMatch(pipelineValue, expectedValue);
 
     lastSnapshot = {
       verified,
       pipeline_stage: pipelineStage,
+      pipeline_value: pipelineValue,
       lead_status: leadStatus,
     };
 
@@ -484,6 +498,7 @@ Deno.serve(async (request) => {
       serviceClient,
       leadId,
       expectedStage: stage,
+      expectedValue: value,
     });
 
     let fallbackApplied = false;
@@ -503,6 +518,7 @@ Deno.serve(async (request) => {
         serviceClient,
         leadId,
         expectedStage: stage,
+        expectedValue: value,
       });
     }
 

@@ -6,6 +6,7 @@ import {
   UserPlus, 
   Activity, 
   Bell,
+  Info,
   Settings,
   Menu,
   X,
@@ -25,6 +26,7 @@ const navItems = [
   { icon: UserPlus, label: 'Lead Intake', path: '/intake' },
   { icon: Activity, label: 'System Health', path: '/health' },
   { icon: Bell, label: 'Notifications', path: '/notifications' },
+  { icon: Info, label: 'About NexusQ', path: '/about' },
 ];
 
 export function Sidebar({
@@ -34,9 +36,11 @@ export function Sidebar({
   isOpen: boolean;
   setIsOpen: React.Dispatch<React.SetStateAction<boolean>>;
 }) {
-  const { profile, user, role } = useAuth();
+  const { profile, user, role, clientId, accessRows } = useAuth();
   const { theme, toggleTheme } = useAppTheme();
   const displayName = profile?.full_name || user?.email || "Operator";
+  const activeWorkspace = accessRows.find((row) => row.client_id === clientId) ?? null;
+  const workspaceLabel = activeWorkspace?.client_name?.trim() || (clientId ? `Workspace ${clientId.slice(0, 8)}` : "No workspace linked");
   const initials = displayName
     .split(" ")
     .filter(Boolean)
@@ -96,6 +100,12 @@ export function Sidebar({
 
         {/* Footer */}
         <div className="mt-auto border-t p-4 space-y-3">
+          <div className="rounded-xl border bg-background px-3 py-3">
+            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Workspace</div>
+            <div className="mt-1 text-sm font-semibold truncate">{workspaceLabel}</div>
+            <div className="mt-1 text-[10px] text-muted-foreground">{getAccessRoleLabel(role)}</div>
+          </div>
+
           <NavLink
             to="/settings"
             onClick={() => setIsOpen(false)}

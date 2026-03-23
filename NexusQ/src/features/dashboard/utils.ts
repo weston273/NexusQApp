@@ -1,4 +1,4 @@
-import { Clock, MessageSquare, TrendingUp, Users } from "lucide-react";
+import { AlertTriangle, Clock, DollarSign, MessageSquare, TrendingUp, Users } from "lucide-react";
 import {
   formatDurationMinutes,
   getLeadDisplayName,
@@ -24,6 +24,7 @@ import type {
   RecentActivityItem,
   ResponseDatum,
   TodaySnapshot,
+  AttentionItem,
 } from "@/features/dashboard/types";
 
 export function buildSystemIntelligence(args: {
@@ -325,6 +326,98 @@ export function buildStats(args: {
     { label: "Conversion", value: `${conversion}%`, change: "", icon: TrendingUp },
     { label: "Open Intents", value: String(Math.max(0, quotedCount)), change: "", icon: MessageSquare },
   ] satisfies DashboardStat[];
+}
+
+export function buildAttentionItems(args: {
+  leads: Lead[];
+  pipelineRows: PipelineRow[];
+  avgResponseToday: number | null;
+}) {
+  const { leads, pipelineRows, avgResponseToday } = args;
+  const now = Date.now();
+  const inHours = (iso?: string | null) => {
+    if (!iso) return null;
+    const timestamp = new Date(iso).getTime();
+    if (!Number.isFinite(timestamp)) return null;
+    return (now - timestamp) / 3_600_000;
+  };
+
+  const staleQuoted = leads.filter(
+    (lead) => normalizeLeadStatus(lead.status) === "quoted" && (inHours(lead.created_at) ?? 0) > 72
+  ).length;
+  const missingValue = pipelineRows.filter((row) => {
+    const stage = normalizePipelineStage(row.stage);
+    const value = Number(row.value ?? 0);
+    return (stage === "quoted" || stage === "booked") && (!Number.isFinite(value) || value <= 0);
+  }).length;
+  const newBacklog = leads.filter(
+    (lead) => normalizeLeadStatus(lead.status) === "new" && (inHours(lead.created_at) ?? 0) > 4
+  ).length;
+  const slowResponse = (avgResponseToday ?? 0) > 30;
+
+  const items: AttentionItem[] = [];
+
+  if (staleQuoted > 0) {
+    items.push({
+      title: "Quoted leads need follow-up",
+      detail: "Quoted opportunities are aging out and need a callback or close decision.",
+      countLabel: `${staleQuoted} stale quote${staleQuoted === 1 ? "" : "s"}`,
+      tone: "high",
+      actionLabel: "Review quoted leads",
+      actionPath: "/pipeline",
+      icon: AlertTriangle,
+    });
+  }
+
+  if (missingValue > 0) {
+    items.push({
+      title: "Revenue values still missing",
+      detail: "Quoted and booked records should carry a USD value so forecasts stay trustworthy.",
+      countLabel: `${missingValue} value gap${missingValue === 1 ? "" : "s"}`,
+      tone: "high",
+      actionLabel: "Open pipeline",
+      actionPath: "/pipeline",
+      icon: DollarSign,
+    });
+  }
+
+  if (newBacklog > 0) {
+    items.push({
+      title: "New leads are stacking up",
+      detail: "Fresh leads are waiting in the opening stage and may need qualification or scheduling.",
+      countLabel: `${newBacklog} waiting`,
+      tone: "medium",
+      actionLabel: "Triage new leads",
+      actionPath: "/pipeline",
+      icon: Users,
+    });
+  }
+
+  if (slowResponse) {
+    items.push({
+      title: "Response time is slipping",
+      detail: "Same-day follow-up speed is one of the fastest conversion levers in the workspace.",
+      countLabel: formatDurationMinutes(avgResponseToday),
+      tone: "medium",
+      actionLabel: "Check automation health",
+      actionPath: "/health",
+      icon: Clock,
+    });
+  }
+
+  if (!items.length) {
+    items.push({
+      title: "No urgent blockers detected",
+      detail: "The board looks healthy right now. Keep reviewing quotes, intake quality, and automation freshness.",
+      countLabel: "Operating baseline",
+      tone: "low",
+      actionLabel: "Open dashboard",
+      actionPath: "/",
+      icon: TrendingUp,
+    });
+  }
+
+  return items.slice(0, 3) satisfies AttentionItem[];
 }
 
 export function buildTodaySnapshot(args: {

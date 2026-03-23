@@ -7,11 +7,13 @@ import { canManageWorkspaceAccess, getAccessRoleLabel, getAccessRoleSummary } fr
 
 type WorkspaceSummaryCardProps = {
   clientId: string | null;
+  workspaceName: string | null;
+  workspaceKey: string | null;
   role: AccessRole | null;
   workspaceCount: number;
 };
 
-export function WorkspaceSummaryCard({ clientId, role, workspaceCount }: WorkspaceSummaryCardProps) {
+export function WorkspaceSummaryCard({ clientId, workspaceName, workspaceKey, role, workspaceCount }: WorkspaceSummaryCardProps) {
   const navigate = useNavigate();
   const canManageAdmin = canManageWorkspaceAccess(role);
   const roleLabel = getAccessRoleLabel(role);
@@ -27,7 +29,8 @@ export function WorkspaceSummaryCard({ clientId, role, workspaceCount }: Workspa
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-lg border bg-background p-3">
             <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Active Workspace</div>
-            <div className="mt-2 text-sm font-semibold break-all">{clientId ?? "Not linked"}</div>
+            <div className="mt-2 text-sm font-semibold break-all">{workspaceName || clientId || "Not linked"}</div>
+            <div className="mt-1 text-[11px] text-muted-foreground">{workspaceKey || (clientId ? clientId.slice(0, 8) : "No tenant selected")}</div>
           </div>
           <div className="rounded-lg border bg-background p-3">
             <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Access Role</div>

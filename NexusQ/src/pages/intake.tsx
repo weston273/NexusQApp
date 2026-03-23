@@ -458,6 +458,41 @@ export function LeadIntake() {
               </div>
 
               <div className="space-y-6">
+                <Card className="border-none bg-muted/30">
+                  <CardContent className="p-5 space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-xs font-bold uppercase tracking-[0.22em] text-muted-foreground">Review Request</div>
+                        <div className="mt-1 text-sm font-semibold">Everything below will be sent with this lead.</div>
+                      </div>
+                      <div className="text-[10px] text-muted-foreground">You can still go back and edit details.</div>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-xl border bg-background p-3">
+                        <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Service</div>
+                        <div className="mt-1 text-sm font-semibold capitalize">{formData.service || "Not selected"}</div>
+                      </div>
+                      <div className="rounded-xl border bg-background p-3">
+                        <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Urgency</div>
+                        <div className="mt-1 text-sm font-semibold capitalize">{formData.urgency}</div>
+                      </div>
+                      <div className="rounded-xl border bg-background p-3 sm:col-span-2">
+                        <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Address</div>
+                        <div className="mt-1 text-sm font-semibold">{formData.address || "Not provided"}</div>
+                      </div>
+                      <div className="rounded-xl border bg-background p-3">
+                        <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Property Type</div>
+                        <div className="mt-1 text-sm font-semibold capitalize">{formData.propertyType}</div>
+                      </div>
+                      <div className="rounded-xl border bg-background p-3">
+                        <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Issue Notes</div>
+                        <div className="mt-1 text-sm font-semibold">{formData.issueDetails || "No extra issue notes added"}</div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
                 <div className="space-y-3">
                   <Label htmlFor="name" className="font-bold text-xs uppercase tracking-wider">Full Name</Label>
                   <Input

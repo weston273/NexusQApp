@@ -15,6 +15,7 @@ import {
   LayoutDashboard,
   BarChart3,
   Inbox,
+  Info,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -60,6 +61,19 @@ function isTypingTarget(target: EventTarget | null) {
   return tag === "input" || tag === "textarea" || tag === "select";
 }
 
+function workspaceLabel(access: { client_id: string; client_name?: string | null; client_key?: string | null } | null) {
+  if (!access) return "Workspace";
+  if (typeof access.client_name === "string" && access.client_name.trim()) return access.client_name.trim();
+  if (typeof access.client_key === "string" && access.client_key.trim()) return access.client_key.trim().toUpperCase();
+  return `Workspace ${access.client_id.slice(0, 8)}`;
+}
+
+function workspaceMeta(access: { client_id: string; client_key?: string | null } | null) {
+  if (!access) return "No workspace linked";
+  if (typeof access.client_key === "string" && access.client_key.trim()) return access.client_key.trim().toUpperCase();
+  return access.client_id.slice(0, 8);
+}
+
 export function Header({
   onToggleSidebar,
 }: {
@@ -74,6 +88,10 @@ export function Header({
   const [clockTick, setClockTick] = React.useState(() => Date.now());
   const [settingsState, setSettingsState] = React.useState(() => loadAppSettings());
   const goKeyAtRef = React.useRef<number>(0);
+  const activeAccessRow = React.useMemo(
+    () => accessRows.find((access) => access.client_id === clientId) ?? null,
+    [accessRows, clientId]
+  );
 
   const displayName = profile?.full_name || settingsState.operatorName || getUserDisplayName(user);
   const displayEmail = profile?.email || user?.email || settingsState.operatorEmail || "";
@@ -93,6 +111,7 @@ export function Header({
       h: "/health",
       n: "/notifications",
       s: "/settings",
+      a: "/about",
     };
 
     const onKeyDown = (event: KeyboardEvent) => {
@@ -229,6 +248,11 @@ export function Header({
               <span className="hidden md:inline truncate">{trustMeta.source}</span>
               <span className="hidden lg:inline truncate">{trustMeta.lastSyncLabel}</span>
             </div>
+            {activeAccessRow ? (
+              <div className="hidden md:block text-[10px] text-muted-foreground truncate">
+                Viewing {workspaceLabel(activeAccessRow)}
+              </div>
+            ) : null}
           </div>
 
           <Badge
@@ -383,11 +407,14 @@ export function Header({
                   {accessRows.map((access) => (
                     <DropdownMenuItem
                       key={access.id}
-                      className="gap-2 cursor-pointer"
+                      className="gap-2 cursor-pointer items-start"
                       onClick={() => setActiveClientId(access.client_id)}
                     >
                       {clientId === access.client_id ? <Check className="h-4 w-4" /> : <span className="h-4 w-4" />}
-                      <span className="truncate text-xs">{access.client_id.slice(0, 8)}</span>
+                      <div className="flex min-w-0 flex-1 flex-col">
+                        <span className="truncate text-xs font-medium">{workspaceLabel(access)}</span>
+                        <span className="truncate text-[10px] text-muted-foreground">{workspaceMeta(access)}</span>
+                      </div>
                       <span className="ml-auto text-[10px] uppercase text-muted-foreground">{getAccessRoleLabel(access.role)}</span>
                     </DropdownMenuItem>
                   ))}
@@ -405,6 +432,10 @@ export function Header({
               <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => navigate("/settings")}>
                 <Settings className="h-4 w-4" />
                 <span>System Config</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem className="gap-2 cursor-pointer" onClick={() => navigate("/about")}>
+                <Info className="h-4 w-4" />
+                <span>About NexusQ</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
@@ -455,6 +486,11 @@ export function Header({
               <Settings className="h-4 w-4" />
               Settings
               <CommandShortcut>G S</CommandShortcut>
+            </CommandItem>
+            <CommandItem onSelect={() => navigateAndClose("/about")}>
+              <Info className="h-4 w-4" />
+              About NexusQ
+              <CommandShortcut>G A</CommandShortcut>
             </CommandItem>
           </CommandGroup>
 

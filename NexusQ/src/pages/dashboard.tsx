@@ -4,6 +4,7 @@ import { ActionEmptyState, PageErrorState, PageLoadingState } from "@/components
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { DashboardActivityCard } from "@/features/dashboard/components/DashboardActivityCard";
+import { DashboardAttentionPanel } from "@/features/dashboard/components/DashboardAttentionPanel";
 import { DashboardHero } from "@/features/dashboard/components/DashboardHero";
 import { DashboardMetricsSection } from "@/features/dashboard/components/DashboardMetricsSection";
 import { DashboardOverviewSection } from "@/features/dashboard/components/DashboardOverviewSection";
@@ -60,6 +61,8 @@ export function Dashboard() {
         todaySnapshot={viewModel.todaySnapshot}
         onPrimaryAction={() => navigate(viewModel.intelligence.actionPath)}
       />
+
+      <DashboardAttentionPanel items={viewModel.attentionItems} />
 
       <DashboardPipelineSummary
         data={viewModel.pipelineSummary}

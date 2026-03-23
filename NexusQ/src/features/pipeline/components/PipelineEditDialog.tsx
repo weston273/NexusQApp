@@ -1,3 +1,4 @@
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PipelineMessageTimeline } from "@/features/pipeline/components/PipelineMessageTimeline";
 import { formatCompactCurrency, formatDateTime, formatNullableText, type Lead, type PipelineRow, type PipelineStage } from "@/lib/leads";
+import { cn } from "@/lib/utils";
 import type { PipelineActiveLead, PipelineEventSummary } from "@/features/pipeline/types";
 
 type PipelineEditDialogProps = {
@@ -30,6 +32,26 @@ type PipelineEditDialogProps = {
   onSave: () => void;
 };
 
+const STAGE_OPTIONS: Array<{
+  value: PipelineStage;
+  label: string;
+  helper: string;
+  action: string;
+}> = [
+  { value: "new", label: "New", helper: "Freshly captured and waiting for triage.", action: "Mark New" },
+  { value: "qualifying", label: "Qualifying", helper: "Inspection, discovery, or early operator contact.", action: "Start Qualifying" },
+  { value: "quoted", label: "Quoted", helper: "Quote prepared or sent to the customer.", action: "Send Quote" },
+  { value: "booked", label: "Booked", helper: "Approved, won, or scheduled for delivery.", action: "Mark Booked" },
+];
+
+function stageNeedsValue(stage: PipelineStage) {
+  return stage === "quoted" || stage === "booked";
+}
+
+function saveButtonLabel(stage: PipelineStage) {
+  return STAGE_OPTIONS.find((option) => option.value === stage)?.action ?? "Save Changes";
+}
+
 export function PipelineEditDialog({
   open,
   onOpenChange,
@@ -45,25 +67,55 @@ export function PipelineEditDialog({
   parsedEditValue,
   onSave,
 }: PipelineEditDialogProps) {
+  const selectedStage = STAGE_OPTIONS.find((option) => option.value === editStage) ?? STAGE_OPTIONS[0];
+  const missingRequiredValue = stageNeedsValue(editStage) && parsedEditValue <= 0;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[720px] max-h-[80vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[780px] max-h-[84vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Update Pipeline</DialogTitle>
           <DialogDescription>
-            Edit the stage and quote/value for this lead. Saving will sync with the database.
-            <br />
-            <span className="text-xs text-muted-foreground">
-              If credentials are missing, update backend connector configuration.
-            </span>
+            Update the stage, revenue value, and recent context for this lead without leaving the board.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="rounded-lg border bg-muted/20 p-3">
-            <div className="text-xs text-muted-foreground">Lead</div>
-            <div className="font-bold">{activeLead?.name ?? "-"}</div>
-            <div className="text-[10px] text-muted-foreground">ID: {activeLead?.id ?? "-"}</div>
+          <div className="rounded-2xl border bg-muted/20 p-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <div className="text-xs text-muted-foreground">Lead</div>
+                <div className="font-bold">{activeLead?.name ?? "-"}</div>
+                <div className="text-[10px] text-muted-foreground">ID: {activeLead?.id ?? "-"}</div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline" className="h-6 px-2 text-[10px] uppercase tracking-[0.22em]">
+                  {selectedStage.label}
+                </Badge>
+                <Badge variant="secondary" className="h-6 px-2 text-[10px]">
+                  ${formatCompactCurrency(parsedEditValue)}
+                </Badge>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-2 md:grid-cols-4">
+              {STAGE_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => onEditStageChange(option.value)}
+                  className={cn(
+                    "rounded-xl border px-3 py-3 text-left transition-colors",
+                    editStage === option.value ? "border-primary bg-primary/5" : "border-border/60 bg-background hover:border-primary/40"
+                  )}
+                >
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{option.label}</div>
+                  <div className="mt-1 text-sm font-semibold">{option.action}</div>
+                  <div className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{option.helper}</div>
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -177,6 +229,16 @@ export function PipelineEditDialog({
               <div className="text-[10px] text-muted-foreground">
                 Parsed: <span className="font-mono">${formatCompactCurrency(parsedEditValue)}</span>
               </div>
+              <div className="text-[10px] text-muted-foreground">
+                {stageNeedsValue(editStage)
+                  ? "Quoted and booked stages should carry the amount you expect to win or deliver."
+                  : "Optional for early stages, but helpful for forecasting."}
+              </div>
+              {missingRequiredValue ? (
+                <div className="text-[10px] font-semibold text-status-error">
+                  Add a value greater than 0 before moving this lead into {selectedStage.label.toLowerCase()}.
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
@@ -185,8 +247,8 @@ export function PipelineEditDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={onSave} disabled={saving || !activeLead}>
-            {saving ? "Saving..." : "Save Changes"}
+          <Button onClick={onSave} disabled={saving || !activeLead || missingRequiredValue}>
+            {saving ? "Saving..." : saveButtonLabel(editStage)}
           </Button>
         </DialogFooter>
       </DialogContent>

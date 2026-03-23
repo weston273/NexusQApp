@@ -59,6 +59,17 @@ async function callWorkflowD(args: {
   return data;
 }
 
+function stageRequiresValue(stage: PipelineStage) {
+  return stage === "quoted" || stage === "booked";
+}
+
+function stageActionLabel(stage: PipelineStage) {
+  if (stage === "qualifying") return "move into qualifying";
+  if (stage === "quoted") return "send a quote";
+  if (stage === "booked") return "mark it booked";
+  return "save this stage";
+}
+
 export function usePipelineViewModel() {
   const { clientId } = useAuth();
   const { leads, events, pipelineRows, loading, error, lastLoadedAt, reload } = useLeads();
@@ -177,12 +188,16 @@ export function usePipelineViewModel() {
     [activeDragLeadId, leadById]
   );
 
-  const openEdit = React.useCallback((lead: UiLead) => {
+  const openStageEditor = React.useCallback((lead: UiLead, targetStage: PipelineStage) => {
     setActiveLead({ id: lead.id, name: lead.name, stage: lead.stage, valueNum: lead.valueNum });
-    setEditStage(lead.stage);
+    setEditStage(targetStage);
     setEditValue(String(Math.round(lead.valueNum || 0)));
     setDialogOpen(true);
   }, []);
+
+  const openEdit = React.useCallback((lead: UiLead) => {
+    openStageEditor(lead, lead.stage);
+  }, [openStageEditor]);
 
   const openLeadById = React.useCallback(
     (leadId: string) => {
@@ -226,6 +241,11 @@ export function usePipelineViewModel() {
       setSaving(true);
 
       const valueNum = parseCurrencyInput(editValue);
+      if (stageRequiresValue(editStage) && valueNum <= 0) {
+        toast.error(`Add a value greater than 0 before you ${stageActionLabel(editStage)}.`);
+        return;
+      }
+
       await callWorkflowD({
         lead_id: activeLead.id,
         client_id: clientId,
@@ -284,6 +304,12 @@ export function usePipelineViewModel() {
       const previousStage = lead.stage;
       const nextStage = PIPELINE_STAGE_ORDER[nextIndex];
 
+      if (stageRequiresValue(nextStage) && lead.valueNum <= 0) {
+        openStageEditor(lead, nextStage);
+        toast.info(`Add a quote value before you ${stageActionLabel(nextStage)}.`);
+        return;
+      }
+
       setStageOverrides((previous) => ({ ...previous, [lead.id]: nextStage }));
 
       try {
@@ -317,7 +343,7 @@ export function usePipelineViewModel() {
         toast.error(getErrorMessage(moveError, "Failed to move stage"));
       }
     },
-    [clearStageOverride, clientId, reload]
+    [clearStageOverride, clientId, openStageEditor, reload]
   );
 
   const handleDragStart = React.useCallback((event: DragStartEvent) => {
@@ -366,6 +392,14 @@ export function usePipelineViewModel() {
         return;
       }
 
+      if (stageRequiresValue(targetStage) && lead.valueNum <= 0) {
+        clearStageOverride(leadId);
+        delete dragOriginRef.current[leadId];
+        openStageEditor(lead, targetStage);
+        toast.info(`Add a quote value before you ${stageActionLabel(targetStage)}.`);
+        return;
+      }
+
       setStageOverrides((previous) => ({ ...previous, [lead.id]: targetStage }));
 
       try {
@@ -401,7 +435,7 @@ export function usePipelineViewModel() {
         delete dragOriginRef.current[leadId];
       }
     },
-    [clearStageOverride, clientId, leadById, reload]
+    [clearStageOverride, clientId, leadById, openStageEditor, reload]
   );
 
   const handleDragCancel = React.useCallback(() => {

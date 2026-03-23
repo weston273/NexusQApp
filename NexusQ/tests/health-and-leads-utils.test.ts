@@ -13,6 +13,7 @@ import {
   staleSignalLabel,
   upsertWorkflowService,
 } from "../src/features/health/utils.ts";
+import { buildAttentionItems } from "../src/features/dashboard/utils.ts";
 
 test("lead helpers normalize pipeline stages and event severity consistently", () => {
   assert.equal(normalizePipelineStage("inspection_scheduled"), "qualifying");
@@ -99,4 +100,43 @@ test("workflow service upsert replaces an existing workflow snapshot without dup
   assert.equal(services.filter((service) => service.name === "Workflow E").length, 1);
   assert.equal(services.find((service) => service.name === "Workflow E")?.status, "optimal");
   assert.equal(services.find((service) => service.name === "Workflow B")?.status, "optimal");
+});
+
+test("dashboard attention items surface stale quotes and missing value gaps", () => {
+  const items = buildAttentionItems({
+    leads: [
+      {
+        id: "lead-1",
+        client_id: "client-1",
+        name: "Taylor",
+        phone: null,
+        email: null,
+        source: "web",
+        status: "quoted",
+        score: null,
+        created_at: new Date(Date.now() - 80 * 3_600_000).toISOString(),
+        last_contacted_at: null,
+        service: "plumbing",
+        urgency: "standard",
+        address: "123 Main",
+      },
+    ],
+    pipelineRows: [
+      {
+        id: "pipe-1",
+        client_id: "client-1",
+        lead_id: "lead-1",
+        stage: "quoted",
+        value: 0,
+        probability: 60,
+        updated_at: new Date().toISOString(),
+      },
+    ],
+    avgResponseToday: 42,
+  });
+
+  assert.equal(items.length, 3);
+  assert.equal(items[0]?.title, "Quoted leads need follow-up");
+  assert.equal(items[1]?.title, "Revenue values still missing");
+  assert.equal(items[2]?.title, "Response time is slipping");
 });

@@ -25,6 +25,8 @@ export type UserAccessRow = {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  client_name?: string | null;
+  client_key?: string | null;
 };
 
 export type ClientAccessKeyRow = {
@@ -96,13 +98,44 @@ export async function fetchCurrentUserProfile(userId: string) {
 }
 
 export async function fetchCurrentUserAccessRows(userId: string) {
-  return supabase
+  const result = await supabase
     .from("user_access")
-    .select("id, user_id, client_id, role, is_active, created_at, updated_at")
+    .select("id, user_id, client_id, role, is_active, created_at, updated_at, clients(name, client_key)")
     .eq("user_id", userId)
     .eq("is_active", true)
-    .order("created_at", { ascending: true })
-    .returns<UserAccessRow[]>();
+    .order("created_at", { ascending: true });
+
+  if (!result.data) {
+    return {
+      ...result,
+      data: result.data as UserAccessRow[] | null,
+    };
+  }
+
+  const data = (result.data as Array<UserAccessRow & { clients?: unknown }>).map((row) => {
+    const clientRecord = Array.isArray(row.clients) ? row.clients[0] : row.clients;
+    const clientSummary =
+      clientRecord && typeof clientRecord === "object" && !Array.isArray(clientRecord)
+        ? (clientRecord as { name?: string | null; client_key?: string | null })
+        : null;
+
+    return {
+      id: row.id,
+      user_id: row.user_id,
+      client_id: row.client_id,
+      role: row.role,
+      is_active: row.is_active,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      client_name: clientSummary?.name ?? null,
+      client_key: clientSummary?.client_key ?? null,
+    } satisfies UserAccessRow;
+  });
+
+  return {
+    ...result,
+    data,
+  };
 }
 
 export function parseAccessError(error: PostgrestError | Error | null | undefined) {

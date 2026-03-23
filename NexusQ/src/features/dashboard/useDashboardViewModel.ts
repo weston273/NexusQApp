@@ -4,6 +4,7 @@ import { useLeads } from "@/hooks/useLeads";
 import { normalizeLeadStatus, normalizePipelineStage } from "@/lib/leads";
 import {
   buildActivityData,
+  buildAttentionItems,
   buildAverageResponseToday,
   buildFunnelData,
   buildLeadTrend,
@@ -60,8 +61,17 @@ export function useDashboardViewModel() {
         avgResponseToday,
         conversion,
         quotedCount,
-      }),
+    }),
     [avgResponseToday, conversion, leadsCaptured, quotedCount]
+  );
+  const attentionItems = React.useMemo(
+    () =>
+      buildAttentionItems({
+        leads,
+        pipelineRows,
+        avgResponseToday,
+      }),
+    [avgResponseToday, leads, pipelineRows]
   );
   const newPipelineCount = React.useMemo(() => {
     if (!pipelineRows.length) {
@@ -99,6 +109,7 @@ export function useDashboardViewModel() {
     responseData,
     activityData,
     stats,
+    attentionItems,
     recentActivity,
     intelligence,
     todaySnapshot,

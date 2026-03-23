@@ -42,6 +42,16 @@ export type DashboardStat = {
   icon: LucideIcon;
 };
 
+export type AttentionItem = {
+  title: string;
+  detail: string;
+  countLabel: string;
+  tone: "high" | "medium" | "low";
+  actionLabel: string;
+  actionPath: string;
+  icon: LucideIcon;
+};
+
 export type RecentActivityItem = {
   id: string;
   user: string;

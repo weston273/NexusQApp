@@ -10,6 +10,7 @@ const LeadIntake = React.lazy(() => import("@/pages/intake").then((m) => ({ defa
 const Health = React.lazy(() => import("@/pages/health").then((m) => ({ default: m.Health })));
 const NotificationsPage = React.lazy(() => import("@/pages/notifications").then((m) => ({ default: m.NotificationsPage })));
 const SettingsPage = React.lazy(() => import("@/pages/settings").then((m) => ({ default: m.SettingsPage })));
+const AboutPage = React.lazy(() => import("@/pages/about").then((m) => ({ default: m.AboutPage })));
 
 const pageVariants = {
   initial: { opacity: 0, y: 10, filter: "blur(4px)" },
@@ -86,6 +87,14 @@ function AnimatedRoutes() {
             element={
               <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration: 0.25, ease: "easeOut" }}>
                 <SettingsPage />
+              </motion.div>
+            }
+          />
+          <Route
+            path="/about"
+            element={
+              <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" transition={{ duration: 0.25, ease: "easeOut" }}>
+                <AboutPage />
               </motion.div>
             }
           />
