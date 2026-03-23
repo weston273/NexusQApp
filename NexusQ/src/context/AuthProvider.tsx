@@ -17,6 +17,7 @@ import {
   setStoredActiveClientId,
 } from "@/lib/access";
 import type { AccessRole, UserAccessRow, UserProfile } from "@/lib/access";
+import { clearSensitiveLocalState } from "@/lib/persistence/sensitive";
 
 type AuthContextValue = {
   session: Session | null;
@@ -79,6 +80,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [accessReady, setAccessReady] = React.useState(false);
   const [authError, setAuthError] = React.useState<string | null>(null);
   const requestTokenRef = React.useRef(0);
+  const currentUserIdRef = React.useRef<string | null>(null);
+  const currentClientIdRef = React.useRef<string | null>(null);
+
+  const clearSensitiveStateForTransition = React.useCallback((nextUserId: string | null, nextClientId: string | null) => {
+    const previousUserId = currentUserIdRef.current;
+    const previousClientId = currentClientIdRef.current;
+    const signedOut = Boolean(previousUserId) && !nextUserId;
+    const userChanged = Boolean(previousUserId) && Boolean(nextUserId) && previousUserId !== nextUserId;
+    const clientChanged = Boolean(previousClientId) && previousClientId !== nextClientId;
+
+    if (signedOut || userChanged || clientChanged) {
+      clearSensitiveLocalState();
+    }
+  }, []);
 
   const applySessionState = React.useCallback(
     async (incomingSession: Session | null) => {
@@ -90,6 +105,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAccessReady(false);
 
       if (!incomingSession?.user) {
+        clearSensitiveStateForTransition(null, null);
         setSession(null);
         setUser(null);
         setProfile(null);
@@ -112,6 +128,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
+        clearSensitiveStateForTransition(null, null);
         setSession(null);
         setUser(null);
         setProfile(null);
@@ -144,6 +161,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       const { selected, recoveredFromClientId } = selectClientContext(loadedAccessRows);
+      clearSensitiveStateForTransition(currentUser.id, selected?.client_id ?? null);
       setProfile(loadedProfile);
       setAccessRows(loadedAccessRows);
       setClientId(selected?.client_id ?? null);
@@ -165,13 +183,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAuthError(null);
     setAccessReady(false);
 
-    const { data, error } = await fetchCurrentUserAccessRows(user.id);
-    const rows = data ?? [];
-    const { selected, recoveredFromClientId } = selectClientContext(rows, clientId);
+      const { data, error } = await fetchCurrentUserAccessRows(user.id);
+      const rows = data ?? [];
+      const { selected, recoveredFromClientId } = selectClientContext(rows, clientId);
 
-    setAccessRows(rows);
-    setClientId(selected?.client_id ?? null);
-    setRole(selected?.role ?? null);
+      clearSensitiveStateForTransition(user.id, selected?.client_id ?? null);
+      setAccessRows(rows);
+      setClientId(selected?.client_id ?? null);
+      setRole(selected?.role ?? null);
     if (recoveredFromClientId) {
       toast.info("Workspace access changed. NexusQ switched you to a currently linked workspace.");
     }
@@ -194,12 +213,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     (nextClientId: string) => {
       const selected = pickPrimaryAccessRow(accessRows, nextClientId);
       if (!selected) return;
+      clearSensitiveStateForTransition(user?.id ?? null, selected.client_id);
       setStoredActiveClientId(selected.client_id);
       setClientId(selected.client_id);
       setRole(selected.role);
     },
-    [accessRows]
+    [accessRows, clearSensitiveStateForTransition, user?.id]
   );
+
+  React.useEffect(() => {
+    currentUserIdRef.current = user?.id ?? null;
+  }, [user?.id]);
+
+  React.useEffect(() => {
+    currentClientIdRef.current = clientId;
+  }, [clientId]);
 
   React.useEffect(() => {
     let mounted = true;

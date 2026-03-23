@@ -1,4 +1,4 @@
-import { readStoredJson, writeStoredJson } from "@/lib/persistence/storage";
+import { readStoredJson, removeStoredValue, writeStoredJson } from "@/lib/persistence/storage";
 import {
   HEALTH_LOG_STORAGE_KEY,
   HEALTH_SERVICE_STORAGE_KEY,
@@ -75,4 +75,9 @@ export function readStoredLogs() {
 
 export function persistLogs(logs: HealthLog[]) {
   writeStoredJson(HEALTH_LOG_STORAGE_KEY, logs);
+}
+
+export function clearStoredHealthState() {
+  removeStoredValue(HEALTH_SERVICE_STORAGE_KEY);
+  removeStoredValue(HEALTH_LOG_STORAGE_KEY);
 }

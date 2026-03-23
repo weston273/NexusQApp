@@ -20,6 +20,10 @@ export function saveRecentIntakeAddresses(addresses: string[]) {
   writeStoredJson(STORAGE_KEYS.intakeAddresses, addresses.slice(0, 8));
 }
 
+export function clearRecentIntakeAddresses() {
+  removeStoredValue(STORAGE_KEYS.intakeAddresses);
+}
+
 export function loadIntakeDraft<Step extends string, FormData>(
   parser: (value: unknown) => IntakeDraft<Step, FormData> | null
 ) {

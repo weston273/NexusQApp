@@ -54,6 +54,19 @@ export function useHealthMonitor() {
   const adaptiveIntervalRef = React.useRef<number>(nominalRefreshSec);
 
   React.useEffect(() => {
+    previousServicesRef.current = [];
+    healthyCyclesRef.current = 0;
+    adaptiveIntervalRef.current = nominalRefreshSec;
+    setAdaptiveIntervalSec(nominalRefreshSec);
+    setPayload(null);
+    setError(null);
+    setLastRefreshAt(null);
+    setLogHistory(readStoredLogs());
+    setServiceSnapshot(readStoredServices());
+    setNetworkSnapshot(createInitialNetworkSnapshot(HEALTH_URLS));
+  }, [clientId, nominalRefreshSec]);
+
+  React.useEffect(() => {
     if (adaptiveIntervalRef.current !== INCIDENT_REFRESH_SEC) {
       adaptiveIntervalRef.current = nominalRefreshSec;
       setAdaptiveIntervalSec(nominalRefreshSec);
@@ -89,7 +102,7 @@ export function useHealthMonitor() {
           if (fallbackServices.length) {
             baseServices = fallbackServices;
             supplementalLogs.push(
-              addSystemLog("Workflow E health-ping returned no service payload. Loaded fallback snapshot from automation_health.", "warning")
+              addSystemLog("Workflow E proxy returned no service payload. Loaded fallback snapshot from automation_health.", "warning")
             );
           }
         } catch (fallbackError: unknown) {
