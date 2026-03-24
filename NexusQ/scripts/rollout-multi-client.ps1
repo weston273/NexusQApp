@@ -9,6 +9,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $migrationPath = Join-Path $repoRoot "supabase\migrations\20260320170000_multi_client_tenant_hardening.sql"
 $projectRefPath = Join-Path $repoRoot "supabase\.temp\project-ref"
 $npxCache = Join-Path $repoRoot "supabase\.temp\npx-cache"
+$legacyBootstrapVersion = "20260309"
 
 function Invoke-SupabaseCli {
   param(
@@ -47,8 +48,10 @@ $projectRef = (Get-Content $projectRefPath -Raw).Trim()
 Write-Host "Starting NexusQ multi-client rollout for Supabase project $projectRef" -ForegroundColor Cyan
 
 if (-not $SkipDbPush) {
+  Write-Host "Normalizing legacy migration history..." -ForegroundColor Yellow
+  Invoke-SupabaseCli -Arguments @("migration", "repair", "--status", "reverted", $legacyBootstrapVersion)
   Write-Host "Pushing database migrations..." -ForegroundColor Yellow
-  Invoke-SupabaseCli -Arguments @("db", "push")
+  Invoke-SupabaseCli -Arguments @("db", "push", "--include-all")
 }
 
 if (-not $SkipFunctionDeploy) {
@@ -56,6 +59,8 @@ if (-not $SkipFunctionDeploy) {
   Invoke-SupabaseCli -Arguments @("functions", "deploy", "workflow-a-proxy", "--no-verify-jwt")
   Invoke-SupabaseCli -Arguments @("functions", "deploy", "workflow-d-proxy", "--no-verify-jwt")
   Invoke-SupabaseCli -Arguments @("functions", "deploy", "workflow-e-proxy", "--no-verify-jwt")
+  Invoke-SupabaseCli -Arguments @("functions", "deploy", "notification-preferences", "--no-verify-jwt")
+  Invoke-SupabaseCli -Arguments @("functions", "deploy", "notification-subscriptions", "--no-verify-jwt")
 }
 
 Write-Host ""

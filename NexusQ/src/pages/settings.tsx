@@ -32,6 +32,7 @@ import { useAuth } from "@/context/AuthProvider";
 import { WorkspaceAccessKeys } from "@/pages/settings/WorkspaceAccessKeys";
 import { WorkspaceSummaryCard } from "@/pages/settings/WorkspaceSummaryCard";
 import { LocalRecoveryCard } from "@/pages/settings/LocalRecoveryCard";
+import { OperatorAlertDeliveryCard } from "@/pages/settings/OperatorAlertDeliveryCard";
 import { useAppTheme } from "@/lib/theme";
 
 const navCards = [
@@ -189,7 +190,7 @@ export function SettingsPage() {
             <div className="flex items-center justify-between rounded-lg border bg-background p-3">
               <Label htmlFor="push-notifications" className="flex items-center gap-2 text-sm font-medium cursor-pointer">
                 <Bell className="h-4 w-4 text-primary" />
-                <span>Push Notifications</span>
+                <span>In-app notification badges</span>
               </Label>
               <Switch
                 id="push-notifications"
@@ -238,6 +239,8 @@ export function SettingsPage() {
           </CardContent>
         </Card>
       </div>
+
+      <OperatorAlertDeliveryCard />
 
       <WorkspaceSummaryCard
         clientId={clientId}

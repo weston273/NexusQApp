@@ -17,6 +17,24 @@ test("config reader accepts valid required env and normalizes the Supabase URL",
   assert.equal(result.data.supabaseAnonKey, "anon-key-value");
 });
 
+test("config reader accepts an optional VAPID public key for browser push", () => {
+  const result = readAppConfig({
+    VITE_SUPABASE_URL: "https://example.supabase.co/",
+    VITE_SUPABASE_ANON_KEY: "anon-key-value",
+    VITE_WEB_PUSH_VAPID_PUBLIC_KEY: "BElL4wzQ1f9oXvY7S6E2QqfGgR8mNzQxT7mJdQ2nG6Yv2w4rP1sK8bC5nL0uH3aM6tR9yX1zA4cD7eF0gH2jK5",
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) {
+    throw result.error;
+  }
+
+  assert.equal(
+    result.data.pushVapidPublicKey,
+    "BElL4wzQ1f9oXvY7S6E2QqfGgR8mNzQxT7mJdQ2nG6Yv2w4rP1sK8bC5nL0uH3aM6tR9yX1zA4cD7eF0gH2jK5"
+  );
+});
+
 test("config reader reports missing required env values and invalid optional URLs", () => {
   const result = readAppConfig({
     VITE_SUPABASE_URL: "not-a-url",

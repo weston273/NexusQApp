@@ -67,6 +67,18 @@ Frontend workspace-linking flow uses the same normalization rule before calling 
   - Resolves Workflow E URL from `WORKFLOW_E_STATUS_URL` (preferred), then `WORKFLOW_E_WEBHOOK_URL`, then `WORKFLOW_E_STATUS_FALLBACK_URL`.
   - Returns normalized JSON health payload to frontend.
 
+- `notification-preferences`
+  - Verifies caller auth token.
+  - Reads and updates the current user's operator delivery preferences in `user_profiles`.
+  - Validates SMS phone numbers in E.164 format.
+  - Refuses to enable SMS delivery without a saved phone number.
+
+- `notification-subscriptions`
+  - Verifies caller auth token.
+  - Resolves tenant context from `client_id` or `client_key`.
+  - Registers, inspects, and deletes browser push subscriptions per `user_id + client_id + endpoint`.
+  - Stores subscription payloads in `notification_subscriptions`.
+
 ## Required Function Secrets
 
 Set in Supabase project secrets:
@@ -88,6 +100,12 @@ Optional:
 - `WORKFLOW_E_STATUS_FALLBACK_URL` (optional fallback)
 - `NEXUSQ_PIPELINE_SECRET` (if set, proxy sends `x-nexusq-secret`)
 - `NEXUSQ_WORKFLOW_A_SECRET` (if set, proxy sends `x-nexusq-secret`)
+- `TWILIO_ACCOUNT_SID` (required for operator SMS delivery)
+- `TWILIO_AUTH_TOKEN` (required for operator SMS delivery)
+- `TWILIO_FROM_NUMBER` (required for operator SMS delivery)
+- `WEB_PUSH_VAPID_PUBLIC_KEY` (required for browser push delivery)
+- `WEB_PUSH_VAPID_PRIVATE_KEY` (required for browser push delivery)
+- `WEB_PUSH_VAPID_SUBJECT` (optional contact subject for web push)
 
 ## Deploy
 
@@ -98,6 +116,8 @@ supabase functions deploy workspace-bootstrap --no-verify-jwt
 supabase functions deploy workflow-d-proxy --no-verify-jwt
 supabase functions deploy workflow-a-proxy --no-verify-jwt
 supabase functions deploy workflow-e-proxy --no-verify-jwt
+supabase functions deploy notification-preferences --no-verify-jwt
+supabase functions deploy notification-subscriptions --no-verify-jwt
 ```
 
 If running locally:

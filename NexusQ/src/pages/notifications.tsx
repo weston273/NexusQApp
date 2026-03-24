@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { NotificationCenterPanel } from "@/features/notifications/components/NotificationCenterPanel";
 import { NotificationOverview } from "@/features/notifications/components/NotificationOverview";
 import { useNotificationCenterContext } from "@/features/notifications/NotificationCenterProvider";
+import { OperatorAlertDeliveryIndicator } from "@/pages/settings/OperatorAlertDeliveryCard";
 
 export function NotificationsPage() {
   const navigate = useNavigate();
@@ -46,6 +47,8 @@ export function NotificationsPage() {
         actionableCount={actionableCount}
         lastLoadedAt={lastLoadedAt}
       />
+
+      <OperatorAlertDeliveryIndicator />
 
       <Card className="border-none bg-muted/10">
         <CardContent className="p-6 space-y-4">

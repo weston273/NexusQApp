@@ -75,7 +75,9 @@ export function NotificationList({
       </div>
 
       {!notificationsEnabled ? (
-        <div className="rounded-md border p-3 text-xs text-muted-foreground">Push notifications are disabled in settings.</div>
+        <div className="rounded-md border p-3 text-xs text-muted-foreground">
+          In-app alert cues are off on this device. SMS and browser push delivery are configured separately.
+        </div>
       ) : null}
 
       {itemCount ? (
@@ -144,7 +146,7 @@ export function NotificationList({
         </div>
       ) : loading ? (
         <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-          Loading workspace notifications…
+          Loading workspace notifications...
         </div>
       ) : (
         <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">

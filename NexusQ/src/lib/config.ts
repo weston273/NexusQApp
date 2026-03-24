@@ -14,6 +14,7 @@ export type AppConfig = {
   authRedirectUrl?: string;
   passwordResetRedirectUrl?: string;
   workflowADevFallbackUrl?: string;
+  pushVapidPublicKey?: string;
 };
 
 export type AppConfigIssue = {
@@ -54,12 +55,14 @@ function readEnvValue(value: unknown) {
 }
 
 function getDefaultEnvSource() {
+  const env = import.meta.env as Record<string, unknown>;
   return {
-    VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
-    VITE_SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY,
-    VITE_AUTH_REDIRECT_URL: import.meta.env.VITE_AUTH_REDIRECT_URL,
-    VITE_PASSWORD_RESET_REDIRECT_URL: import.meta.env.VITE_PASSWORD_RESET_REDIRECT_URL,
-    VITE_WORKFLOW_A_DEV_FALLBACK_URL: import.meta.env.VITE_WORKFLOW_A_DEV_FALLBACK_URL,
+    VITE_SUPABASE_URL: env.VITE_SUPABASE_URL,
+    VITE_SUPABASE_ANON_KEY: env.VITE_SUPABASE_ANON_KEY,
+    VITE_AUTH_REDIRECT_URL: env.VITE_AUTH_REDIRECT_URL,
+    VITE_PASSWORD_RESET_REDIRECT_URL: env.VITE_PASSWORD_RESET_REDIRECT_URL,
+    VITE_WORKFLOW_A_DEV_FALLBACK_URL: env.VITE_WORKFLOW_A_DEV_FALLBACK_URL,
+    VITE_WEB_PUSH_VAPID_PUBLIC_KEY: env.VITE_WEB_PUSH_VAPID_PUBLIC_KEY,
   } satisfies Partial<Record<string, unknown>>;
 }
 
@@ -85,6 +88,20 @@ function validatePlaceholderValue(key: string, value: string | undefined, issues
   }
 }
 
+function validateOptionalVapidPublicKey(key: string, value: string | undefined, issues: AppConfigIssue[]) {
+  if (!value) return undefined;
+
+  if (!/^[A-Za-z0-9_-]+$/.test(value) || value.length < 32) {
+    issues.push({
+      key,
+      message: "must be a base64url-encoded VAPID public key",
+    });
+    return undefined;
+  }
+
+  return value;
+}
+
 export function readAppConfig(env?: Partial<Record<string, unknown>>) {
   const source = env ?? getDefaultEnvSource();
   const issues: AppConfigIssue[] = [];
@@ -93,6 +110,7 @@ export function readAppConfig(env?: Partial<Record<string, unknown>>) {
   const authRedirectUrlValue = readEnvValue(source.VITE_AUTH_REDIRECT_URL);
   const passwordResetRedirectUrlValue = readEnvValue(source.VITE_PASSWORD_RESET_REDIRECT_URL);
   const workflowADevFallbackUrlValue = readEnvValue(source.VITE_WORKFLOW_A_DEV_FALLBACK_URL);
+  const pushVapidPublicKeyValue = readEnvValue(source.VITE_WEB_PUSH_VAPID_PUBLIC_KEY);
 
   let supabaseUrl = "";
   if (!supabaseUrlValue) {
@@ -133,6 +151,11 @@ export function readAppConfig(env?: Partial<Record<string, unknown>>) {
     workflowADevFallbackUrlValue,
     issues
   );
+  const pushVapidPublicKey = validateOptionalVapidPublicKey(
+    "VITE_WEB_PUSH_VAPID_PUBLIC_KEY",
+    pushVapidPublicKeyValue,
+    issues
+  );
 
   if (issues.length) {
     return {
@@ -149,6 +172,7 @@ export function readAppConfig(env?: Partial<Record<string, unknown>>) {
       authRedirectUrl,
       passwordResetRedirectUrl,
       workflowADevFallbackUrl,
+      pushVapidPublicKey,
     } satisfies AppConfig,
   };
 }

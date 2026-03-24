@@ -6,6 +6,7 @@ import {
   getSupabaseServiceRoleKey,
   getSupabaseUrl,
 } from "../_shared/supabase-env.ts";
+import { createOperatorAlert } from "../_shared/operator-alerts.ts";
 import { resolveTenantForUser } from "../_shared/tenant.ts";
 
 type IntakeRequest = Record<string, unknown> & {
@@ -16,11 +17,37 @@ type IntakeRequest = Record<string, unknown> & {
   email?: string | null;
 };
 
+type LeadSnapshot = {
+  id: string;
+  clientId: string;
+  name: string | null;
+  phone: string | null;
+  email: string | null;
+  service: string | null;
+  address: string | null;
+  source: string | null;
+  status: string | null;
+};
+
 function getOptionalEnv(name: string) {
   const value = Deno.env.get(name);
   if (!value) return null;
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
+}
+
+function asRecord(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function pickString(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return null;
 }
 
 function getAuthClient(request: Request) {
@@ -52,6 +79,81 @@ function getServiceClient() {
   return createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+}
+
+function extractLeadId(upstreamPayload: Record<string, unknown>) {
+  const leadRecord = asRecord(upstreamPayload.lead);
+  const leadSnapshot = asRecord(upstreamPayload.lead_snapshot);
+  return pickString(
+    upstreamPayload.lead_id,
+    upstreamPayload.leadId,
+    leadRecord?.id,
+    leadSnapshot?.id
+  );
+}
+
+async function loadLeadSnapshot(params: {
+  serviceClient: ReturnType<typeof getServiceClient>;
+  clientId: string;
+  leadId: string;
+}): Promise<LeadSnapshot | null> {
+  const { data, error } = await params.serviceClient
+    .from("leads")
+    .select("id, client_id, name, phone, email, service, address, source, status")
+    .eq("id", params.leadId)
+    .eq("client_id", params.clientId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to load lead snapshot: ${error.message}`);
+  }
+
+  const record = asRecord(data);
+  const id = pickString(record?.id);
+  const clientId = pickString(record?.client_id);
+  if (!id || !clientId) return null;
+
+  return {
+    id,
+    clientId,
+    name: pickString(record?.name),
+    phone: pickString(record?.phone),
+    email: pickString(record?.email),
+    service: pickString(record?.service),
+    address: pickString(record?.address),
+    source: pickString(record?.source),
+    status: pickString(record?.status),
+  };
+}
+
+function buildLeadAlertBody(args: {
+  lead: LeadSnapshot | null;
+  body: IntakeRequest;
+  source: string;
+}) {
+  const leadName = pickString(args.lead?.name);
+  const service = pickString(args.lead?.service, args.body.service, args.body.requested_service);
+  const address = pickString(args.lead?.address, args.body.address);
+  const contact = pickString(args.lead?.phone, args.body.phone, args.lead?.email, args.body.email);
+
+  const fragments: string[] = [];
+  fragments.push(leadName ? `${leadName} is ready for follow-up.` : "A new lead is ready for follow-up.");
+
+  if (service) {
+    fragments.push(`Service: ${service}.`);
+  } else {
+    fragments.push(`Source: ${args.source}.`);
+  }
+
+  if (address) {
+    fragments.push(`Address: ${address}.`);
+  }
+
+  if (contact) {
+    fragments.push(`Contact: ${contact}.`);
+  }
+
+  return fragments.join(" ");
 }
 
 async function requireAuthenticatedUser(request: Request): Promise<User> {
@@ -215,12 +317,68 @@ Deno.serve(async (request) => {
           response.ok && upstreamPayload?._error !== true && upstreamPayload?.ok !== false;
 
         if (upstreamOk) {
+          const leadId = extractLeadId(upstreamPayload);
+          let leadSnapshot: LeadSnapshot | null = null;
+          let operatorAlert: Awaited<ReturnType<typeof createOperatorAlert>> | null = null;
+          let operatorAlertError: string | null = null;
+
+          if (leadId) {
+            try {
+              leadSnapshot = await loadLeadSnapshot({
+                serviceClient,
+                clientId: tenant.clientId,
+                leadId,
+              });
+            } catch (leadError) {
+              console.warn("workflow-a-proxy lead snapshot unavailable", {
+                client_id: tenant.clientId,
+                lead_id: leadId,
+                message: leadError instanceof Error ? leadError.message : "Failed to load lead snapshot.",
+              });
+            }
+          }
+
+          try {
+            operatorAlert = await createOperatorAlert({
+              serviceClient,
+              clientId: tenant.clientId,
+              type: "lead_created",
+              title: "New lead captured",
+              body: buildLeadAlertBody({
+                lead: leadSnapshot,
+                body,
+                source,
+              }),
+              severity: "high",
+              leadId,
+              linkPath: leadId ? `/pipeline?lead=${encodeURIComponent(leadId)}` : "/pipeline",
+              source: "workflow-a-proxy",
+              metadata: {
+                workflow: "A",
+                intake_source: source,
+                upstream_status: response.status,
+                lead_status: leadSnapshot?.status ?? null,
+              },
+            });
+          } catch (alertError) {
+            operatorAlertError =
+              alertError instanceof Error ? alertError.message : "Operator alert delivery failed.";
+            console.error("workflow-a-proxy operator alert failed", {
+              client_id: tenant.clientId,
+              lead_id: leadId,
+              message: operatorAlertError,
+            });
+          }
+
           return jsonResponse(
             {
               ok: true,
+              lead_id: leadId ?? null,
               upstream_url: url,
               upstream_status: response.status,
               upstream_payload: upstreamPayload,
+              operator_alert: operatorAlert,
+              operator_alert_error: operatorAlertError,
             },
             200,
             request

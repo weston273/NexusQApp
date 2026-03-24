@@ -4,6 +4,7 @@ import './index.css';
 import { AppThemeProvider } from './lib/theme';
 import { readAppConfig } from './lib/config';
 import { StartupFailure } from './components/layout/StartupFailure';
+import { registerPushServiceWorker } from './features/notifications/push-runtime';
 
 const root = ReactDOM.createRoot(document.getElementById('root')!);
 
@@ -40,6 +41,13 @@ async function bootstrap() {
       <App />
     </BrowserRouter>
   );
+
+  void registerPushServiceWorker().catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : 'Unknown service worker registration failure';
+    console.warn('Failed to register push service worker.', message, {
+      vapidConfigured: Boolean(config.data.pushVapidPublicKey),
+    });
+  });
 }
 
 void bootstrap().catch((error: unknown) => {

@@ -8,6 +8,7 @@ interface ImportMetaEnv {
   readonly VITE_AUTH_REDIRECT_URL?: string;
   readonly VITE_PASSWORD_RESET_REDIRECT_URL?: string;
   readonly VITE_WORKFLOW_A_DEV_FALLBACK_URL?: string;
+  readonly VITE_WEB_PUSH_VAPID_PUBLIC_KEY?: string;
 }
 
 interface ImportMeta {

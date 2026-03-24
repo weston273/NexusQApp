@@ -2,6 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.94.0";
 import type { User } from "npm:@supabase/supabase-js@2.94.0";
 import { corsHeaders, jsonResponse } from "../_shared/cors.ts";
 import { getSupabaseAnonKey, getSupabaseServiceRoleKey, getSupabaseUrl } from "../_shared/supabase-env.ts";
+import { createOperatorAlert } from "../_shared/operator-alerts.ts";
 
 type PipelineStage = "new" | "qualifying" | "quoted" | "booked";
 
@@ -24,6 +25,16 @@ type DirectPersistenceResult = {
   warnings: string[];
 };
 
+type LeadSnapshot = {
+  id: string;
+  clientId: string;
+  name: string | null;
+  service: string | null;
+  address: string | null;
+  source: string | null;
+  status: string | null;
+};
+
 const DEFAULT_WORKFLOW_D_URL = "https://n8n-k7j4.onrender.com/webhook/pipeline-update";
 
 function getOptionalEnv(name: string) {
@@ -31,6 +42,20 @@ function getOptionalEnv(name: string) {
   if (!value) return null;
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
+}
+
+function asRecord(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function pickString(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return null;
 }
 
 function normalizeWorkflowDUrl(candidate: string) {
@@ -114,6 +139,35 @@ function valuesMatch(actualValue: number | null, expectedValue: number | null) {
   if (expectedValue == null) return true;
   if (actualValue == null) return false;
   return Math.abs(actualValue - expectedValue) < 0.0001;
+}
+
+function severityForStage(stage: PipelineStage) {
+  if (stage === "booked") return "high" as const;
+  if (stage === "quoted") return "medium" as const;
+  return "low" as const;
+}
+
+function titleForStage(stage: PipelineStage) {
+  if (stage === "quoted") return "Quote sent";
+  if (stage === "booked") return "Lead booked";
+  if (stage === "qualifying") return "Lead moved to qualifying";
+  return "Lead stage updated";
+}
+
+function stageLabel(stage: PipelineStage) {
+  if (stage === "quoted") return "Quoted";
+  if (stage === "booked") return "Booked";
+  if (stage === "qualifying") return "Qualifying";
+  return "New";
+}
+
+function formatValue(value: number | null) {
+  if (value == null || !Number.isFinite(value)) return null;
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(value);
 }
 
 function getAuthClient(request: Request) {
@@ -200,6 +254,68 @@ async function resolveLeadContext(params: {
   }
 
   return { clientId: lead.client_id };
+}
+
+async function loadLeadSnapshot(params: {
+  serviceClient: ReturnType<typeof getServiceClient>;
+  clientId: string;
+  leadId: string;
+}): Promise<LeadSnapshot | null> {
+  const { data, error } = await params.serviceClient
+    .from("leads")
+    .select("id, client_id, name, service, address, source, status")
+    .eq("id", params.leadId)
+    .eq("client_id", params.clientId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to load lead snapshot: ${error.message}`);
+  }
+
+  const record = asRecord(data);
+  const id = pickString(record?.id);
+  const clientId = pickString(record?.client_id);
+  if (!id || !clientId) return null;
+
+  return {
+    id,
+    clientId,
+    name: pickString(record?.name),
+    service: pickString(record?.service),
+    address: pickString(record?.address),
+    source: pickString(record?.source),
+    status: pickString(record?.status),
+  };
+}
+
+function buildStageAlertBody(args: {
+  lead: LeadSnapshot | null;
+  stage: PipelineStage;
+  value: number | null;
+}) {
+  const formattedValue = formatValue(args.value);
+  const fragments: string[] = [];
+  const stageSummary = `moved to ${stageLabel(args.stage)}.`;
+
+  if (args.lead?.name) {
+    fragments.push(`${args.lead.name} ${stageSummary}`);
+  } else {
+    fragments.push(`A lead ${stageSummary}`);
+  }
+
+  if (args.lead?.service) {
+    fragments.push(`Service: ${args.lead.service}.`);
+  }
+
+  if (formattedValue) {
+    fragments.push(`Value: ${formattedValue}.`);
+  }
+
+  if (args.lead?.address) {
+    fragments.push(`Address: ${args.lead.address}.`);
+  }
+
+  return fragments.join(" ");
 }
 
 async function sleep(ms: number) {
@@ -540,6 +656,58 @@ Deno.serve(async (request) => {
       );
     }
 
+    let operatorAlert: Awaited<ReturnType<typeof createOperatorAlert>> | null = null;
+    let operatorAlertError: string | null = null;
+    let leadSnapshot: LeadSnapshot | null = null;
+
+    try {
+      leadSnapshot = await loadLeadSnapshot({
+        serviceClient,
+        clientId: context.clientId,
+        leadId,
+      });
+    } catch (snapshotError) {
+      console.warn("workflow-d-proxy lead snapshot unavailable", {
+        client_id: context.clientId,
+        lead_id: leadId,
+        message: snapshotError instanceof Error ? snapshotError.message : "Failed to load lead snapshot.",
+      });
+    }
+
+    try {
+      operatorAlert = await createOperatorAlert({
+        serviceClient,
+        clientId: context.clientId,
+        type: "pipeline_stage_changed",
+        title: titleForStage(stage),
+        body: buildStageAlertBody({
+          lead: leadSnapshot,
+          stage,
+          value,
+        }),
+        severity: severityForStage(stage),
+        leadId,
+        linkPath: `/pipeline?lead=${encodeURIComponent(leadId)}`,
+        source: "workflow-d-proxy",
+        metadata: {
+          workflow: "D",
+          stage,
+          value,
+          fallback_applied: fallbackApplied,
+          persisted,
+        },
+      });
+    } catch (alertError) {
+      operatorAlertError =
+        alertError instanceof Error ? alertError.message : "Operator alert delivery failed.";
+      console.error("workflow-d-proxy operator alert failed", {
+        client_id: context.clientId,
+        lead_id: leadId,
+        stage,
+        message: operatorAlertError,
+      });
+    }
+
     return jsonResponse(
       {
         ok: true,
@@ -551,6 +719,8 @@ Deno.serve(async (request) => {
         upstream_payload: workflowPayload,
         fallback_applied: fallbackApplied,
         fallback_warnings: fallbackWarnings,
+        operator_alert: operatorAlert,
+        operator_alert_error: operatorAlertError,
         warning:
           fallbackApplied && workflowResponse
             ? "Workflow D upstream did not persist the update. Applied direct server-side fallback."
