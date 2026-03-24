@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ensureLiveSession, signInWithEmailPassword, signInWithGoogleOAuth } from "@/lib/auth";
+import { clearPendingSignupPhone } from "@/lib/profile-contact";
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -17,8 +18,13 @@ export function LoginPage() {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
+  React.useEffect(() => {
+    clearPendingSignupPhone();
+  }, []);
+
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    clearPendingSignupPhone();
     setError(null);
     setLoading(true);
 
@@ -42,6 +48,7 @@ export function LoginPage() {
   };
 
   const onGoogle = async () => {
+    clearPendingSignupPhone();
     setError(null);
     setLoading(true);
     const { error: oauthError } = await signInWithGoogleOAuth();
@@ -57,7 +64,7 @@ export function LoginPage() {
         <CardHeader>
           <CardTitle>Login</CardTitle>
           <CardDescription>
-            Sign in to access NexusQ. If this account is not linked yet, you will be guided to create or join a workspace next.
+            Sign in to access NexusQ. If this account is missing an operator phone number or workspace link, NexusQ will guide you through those steps next.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -97,6 +104,9 @@ export function LoginPage() {
           <Button type="button" variant="outline" className="w-full" onClick={onGoogle} disabled={loading}>
             Continue with Google
           </Button>
+          <p className="text-[11px] text-muted-foreground">
+            New Google signup? Use the sign up page first so NexusQ can collect the operator phone number used for SMS alerts.
+          </p>
 
           <div className="text-sm flex items-center justify-between">
             <Link className="text-primary hover:underline" to="/forgot-password">

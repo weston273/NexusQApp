@@ -2,6 +2,7 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ensureLiveSession, exchangeOAuthCodeForSession } from "@/lib/auth";
+import { clearPendingSignupPhone, persistCurrentUserPhone, readPendingSignupPhone, readUserMetadataPhone } from "@/lib/profile-contact";
 
 export function AuthCallbackPage() {
   const navigate = useNavigate();
@@ -32,6 +33,25 @@ export function AuthCallbackPage() {
         await ensureLiveSession(data.session, { clearInvalidSession: true });
       } catch (sessionError) {
         setError(sessionError instanceof Error ? sessionError.message : "Unable to complete sign in.");
+        return;
+      }
+
+      try {
+        const metadataPhone = readUserMetadataPhone(data.session.user);
+        if (metadataPhone) {
+          clearPendingSignupPhone();
+        } else {
+          const pendingPhone = readPendingSignupPhone();
+          if (pendingPhone) {
+            await persistCurrentUserPhone(pendingPhone, data.session.user);
+            clearPendingSignupPhone();
+          }
+        }
+      } catch (phoneError) {
+        const message =
+          phoneError instanceof Error ? phoneError.message : "Unable to save your operator phone number automatically.";
+        setError(message);
+        navigate("/complete-profile", { replace: true, state: { from: "/" } });
         return;
       }
 

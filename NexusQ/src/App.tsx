@@ -15,6 +15,7 @@ import { ForgotPasswordPage } from "@/pages/forgot-password";
 import { LinkWorkspacePage } from "@/pages/link-workspace";
 import { AuthCallbackPage } from "@/pages/auth-callback";
 import { ResetPasswordPage } from "@/pages/reset-password";
+import { CompleteProfilePage } from "@/pages/complete-profile";
 
 function AppShell() {
   return (
@@ -71,6 +72,14 @@ function App() {
           />
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route
+            path="/complete-profile"
+            element={
+              <ProtectedRoute requireLinkedClient={false} requirePhone={false}>
+                <CompleteProfilePage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/link-workspace"
             element={

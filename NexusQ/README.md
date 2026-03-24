@@ -32,8 +32,11 @@ Optional:
 
 - `VITE_AUTH_REDIRECT_URL`
 - `VITE_PASSWORD_RESET_REDIRECT_URL`
+- `VITE_WEB_PUSH_VAPID_PUBLIC_KEY`
 
 `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` must be real project values in `.env.local`, not the example placeholders from `.env.example`.
+
+If browser push is enabled, `VITE_WEB_PUSH_VAPID_PUBLIC_KEY` must be the same public VAPID key configured in the Supabase Edge Function secrets as `WEB_PUSH_VAPID_PUBLIC_KEY`.
 
 NexusQ now validates frontend env values during startup. If required values are missing, invalid, or still set to placeholder examples, the app renders a startup failure screen instead of booting into a broken state.
 
@@ -68,11 +71,12 @@ npm run release:check
 ## Workspace Bootstrap Flow
 
 1. User signs in with Supabase Auth.
-2. If the account has no active workspace access, the frontend routes to `/link-workspace`.
-3. The user either:
+2. If the account has no operator phone number on file, the frontend routes to `/complete-profile` before workspace access is restored.
+3. If the account has no active workspace access, the frontend routes to `/link-workspace`.
+4. The user either:
    - creates a workspace through `workspace-bootstrap` with the `create_workspace` action, or
    - joins a workspace through `workspace-bootstrap` with the `join_workspace` action.
-4. The frontend refreshes `user_access`, stores the active workspace `client_id`, and enters the main shell.
+5. The frontend refreshes `user_access`, stores the active workspace `client_id`, and enters the main shell.
 
 ## Deployment Notes
 
@@ -87,6 +91,11 @@ npm run release:check
 Frontend env values belong in `.env.local` or your deployment provider's frontend env settings.
 
 Supabase edge-function secrets belong in the Supabase project, not the frontend. See [supabase/functions/README.md](./supabase/functions/README.md) for the current function secret list and deploy commands.
+
+Browser push key placement:
+
+- Frontend: `VITE_WEB_PUSH_VAPID_PUBLIC_KEY` in `.env.local` and in your deployment platform's frontend env settings
+- Supabase secrets: `WEB_PUSH_VAPID_PUBLIC_KEY`, `WEB_PUSH_VAPID_PRIVATE_KEY`, `WEB_PUSH_VAPID_SUBJECT`
 
 ## Multi-Client Rollout
 

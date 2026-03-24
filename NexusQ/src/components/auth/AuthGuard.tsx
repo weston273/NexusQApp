@@ -5,7 +5,7 @@ import { useAuth } from "@/context/AuthProvider";
 
 export function AuthGuard({ children }: { children: React.ReactElement }) {
   const location = useLocation();
-  const { loading, user, clientId, authError, refreshAccess } = useAuth();
+  const { loading, user, clientId, phoneReady, authError, refreshAccess } = useAuth();
 
   if (loading) {
     return (
@@ -41,6 +41,10 @@ export function AuthGuard({ children }: { children: React.ReactElement }) {
 
   if (!user) {
     return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />;
+  }
+
+  if (!phoneReady) {
+    return <Navigate to="/complete-profile" replace state={{ from: `${location.pathname}${location.search}` }} />;
   }
 
   if (!clientId) {

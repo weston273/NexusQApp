@@ -164,6 +164,7 @@ export async function signUpWithEmail(params: {
   email: string;
   password: string;
   fullName: string;
+  phone: string;
 }) {
   return supabase.auth.signUp({
     email: params.email,
@@ -172,6 +173,7 @@ export async function signUpWithEmail(params: {
       emailRedirectTo: getOAuthRedirectUrl(),
       data: {
         full_name: params.fullName,
+        phone: params.phone,
       },
     },
   });

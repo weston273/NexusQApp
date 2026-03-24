@@ -6,11 +6,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ensureLiveSession, signInWithGoogleOAuth, signUpWithEmail } from "@/lib/auth";
+import { normalizeE164PhoneInput } from "@/lib/phone";
+import { clearPendingSignupPhone, persistCurrentUserPhone, storePendingSignupPhone } from "@/lib/profile-contact";
 
 export function SignupPage() {
   const navigate = useNavigate();
   const [fullName, setFullName] = React.useState("");
   const [email, setEmail] = React.useState("");
+  const [phone, setPhone] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [confirmPassword, setConfirmPassword] = React.useState("");
   const [loading, setLoading] = React.useState(false);
@@ -19,6 +22,7 @@ export function SignupPage() {
 
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    clearPendingSignupPhone();
     setError(null);
     setMessage(null);
 
@@ -30,12 +34,18 @@ export function SignupPage() {
       setError("Password must be at least 8 characters.");
       return;
     }
+    const normalizedPhone = normalizeE164PhoneInput(phone);
+    if (!normalizedPhone) {
+      setError("Enter a valid phone number in E.164 format, for example +15551234567.");
+      return;
+    }
 
     setLoading(true);
     const { data, error: signUpError } = await signUpWithEmail({
       email: email.trim(),
       password,
       fullName: fullName.trim(),
+      phone: normalizedPhone,
     });
     setLoading(false);
 
@@ -47,6 +57,7 @@ export function SignupPage() {
     if (data.session) {
       try {
         await ensureLiveSession(data.session, { clearInvalidSession: true });
+        await persistCurrentUserPhone(normalizedPhone, data.session.user);
       } catch (sessionError) {
         setError(sessionError instanceof Error ? sessionError.message : "Unable to finish sign up.");
         return;
@@ -60,11 +71,20 @@ export function SignupPage() {
   };
 
   const onGoogle = async () => {
+    const normalizedPhone = normalizeE164PhoneInput(phone);
+    if (!normalizedPhone) {
+      setError("Enter a valid phone number before continuing with Google.");
+      return;
+    }
+
     setLoading(true);
     setError(null);
+    clearPendingSignupPhone();
+    storePendingSignupPhone(normalizedPhone);
     const { error: oauthError } = await signInWithGoogleOAuth();
     if (oauthError) {
       setError(oauthError.message);
+      clearPendingSignupPhone();
       setLoading(false);
     }
   };
@@ -102,6 +122,21 @@ export function SignupPage() {
                 onChange={(event) => setEmail(event.target.value)}
                 required
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="phone">Phone number</Label>
+              <Input
+                id="phone"
+                type="tel"
+                autoComplete="tel"
+                placeholder="+15551234567"
+                value={phone}
+                onChange={(event) => setPhone(event.target.value)}
+                required
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Required for operator SMS alerts. Use E.164 format.
+              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>

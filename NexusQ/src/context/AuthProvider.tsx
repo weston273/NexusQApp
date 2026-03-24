@@ -17,12 +17,15 @@ import {
   setStoredActiveClientId,
 } from "@/lib/access";
 import type { AccessRole, UserAccessRow, UserProfile } from "@/lib/access";
+import { persistCurrentUserPhone, readUserMetadataPhone } from "@/lib/profile-contact";
 import { clearSensitiveLocalState } from "@/lib/persistence/sensitive";
 
 type AuthContextValue = {
   session: Session | null;
   user: User | null;
   profile: UserProfile | null;
+  phone: string | null;
+  phoneReady: boolean;
   accessRows: UserAccessRow[];
   clientId: string | null;
   role: AccessRole | null;
@@ -160,9 +163,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      let nextProfile = loadedProfile;
+      let nextErrorMessage = errorMessage;
+      const metadataPhone = readUserMetadataPhone(currentUser);
+
+      if (metadataPhone && !loadedProfile?.phone) {
+        try {
+          const syncedProfile = await persistCurrentUserPhone(metadataPhone, currentUser);
+          nextProfile = {
+            id: syncedProfile.id,
+            email: syncedProfile.email,
+            full_name: syncedProfile.fullName,
+            phone: syncedProfile.phone,
+            whatsapp: loadedProfile?.whatsapp ?? null,
+            created_at: syncedProfile.createdAt ?? loadedProfile?.created_at ?? new Date().toISOString(),
+            updated_at: syncedProfile.updatedAt ?? loadedProfile?.updated_at ?? new Date().toISOString(),
+          };
+        } catch (profileSyncError) {
+          nextErrorMessage =
+            nextErrorMessage ??
+            (profileSyncError instanceof Error ? profileSyncError.message : "Unable to sync your operator profile.");
+        }
+      }
+
       const { selected, recoveredFromClientId } = selectClientContext(loadedAccessRows);
       clearSensitiveStateForTransition(currentUser.id, selected?.client_id ?? null);
-      setProfile(loadedProfile);
+      setProfile(nextProfile);
       setAccessRows(loadedAccessRows);
       setClientId(selected?.client_id ?? null);
       setRole(selected?.role ?? null);
@@ -171,7 +197,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       setProfileReady(true);
       setAccessReady(true);
-      setAuthError(errorMessage);
+      setAuthError(nextErrorMessage);
       setLoading(false);
     },
     [clearSensitiveStateForTransition]
@@ -229,6 +255,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     currentClientIdRef.current = clientId;
   }, [clientId]);
 
+  const resolvedPhone = React.useMemo(() => {
+    if (typeof profile?.phone === "string" && profile.phone.trim()) {
+      return profile.phone.trim();
+    }
+    return readUserMetadataPhone(user);
+  }, [profile?.phone, user]);
+
   React.useEffect(() => {
     let mounted = true;
 
@@ -264,6 +297,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       session,
       user,
       profile,
+      phone: resolvedPhone,
+      phoneReady: Boolean(resolvedPhone),
       accessRows,
       clientId,
       role,
@@ -281,6 +316,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       authError,
       clientId,
       loading,
+      resolvedPhone,
       sessionReady,
       profileReady,
       accessReady,
