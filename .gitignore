@@ -8,3 +8,4 @@ NexusQ/dist/
 
 # Local env
 NexusQ/.env.local
+NexusQ/supabase/functions/.env.local

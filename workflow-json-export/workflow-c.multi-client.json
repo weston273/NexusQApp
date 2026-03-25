@@ -398,7 +398,7 @@
             },
             {
               "name": "Authorization",
-              "value": "BearereyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlZW5tbXVqY2lvdXp1bGZveWtxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODk5MDIwOSwiZXhwIjoyMDg0NTY2MjA5fQ.nisv-gqBraAkN4-3luQCbEePoz5FF84tnBExsmR0cE0"
             }
           ]
         },
@@ -426,12 +426,11 @@
           "conditions": [
             {
               "id": "0efb369b-3bc6-4b8b-9747-5d4983f75f1c",
-              "leftValue": "{{ Array.isArray($json) && $json.length > 0 }}",
-              "rightValue": "",
+              "leftValue": "={{ Array.isArray($json) && $json.length > 0 }}",
+              "rightValue": true,
               "operator": {
                 "type": "boolean",
-                "operation": "false",
-                "singleValue": true
+                "operation": "equals"
               }
             }
           ],
@@ -618,7 +617,7 @@
           "conditions": [
             {
               "id": "6b8708d9-4903-4264-9660-e34dfe5d2ce2",
-              "leftValue": "={{ $json.okToSend }}",
+              "leftValue": "={{ ['contacted', 'new', 'qualifying', 'quoted'].includes(String($json.status || '').toLowerCase()) && !!$json.phone && !!$json.client_phone && !$json._missingLead }}",
               "rightValue": true,
               "operator": {
                 "type": "boolean",
@@ -641,7 +640,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const lead = $json;\nconst first = (lead.name || '').split(' ')[0] || 'there';\n\nconst templates = {\n  day1: `Hi ${first} — just checking in. Would you like a quick quote or to book an inspection today? Reply YES and we’ll schedule you.`,\n  day3: `Hi ${first} — following up. If you still need help, reply YES and we’ll get you booked in (takes 1 minute).`,\n  day7: `Hi ${first} — last check-in from my side. Reply YES if you want us to help, or NO if you’re sorted and I’ll close this.`,\n};\n\nconst followup_body = templates[lead.bucket] || templates.day1;\n\nreturn [{\n  ...lead,\n  followup_body,\n}];"
+        "jsCode": "const lead = $json;\nconst first = (lead.name || '').split(' ')[0] || 'there';\n\nconst templates = {\n  day1: `Hi ${first} - just checking in. Would you like a quick quote or to book an inspection today? Reply YES and we'll schedule you.`,\n  day3: `Hi ${first} - following up. If you still need help, reply YES and we'll get you booked in (takes 1 minute).`,\n  day7: `Hi ${first} - last check-in from my side. Reply YES if you want us to help, or NO if you're sorted and I'll close this.`,\n};\n\nconst followup_body = templates[lead.bucket] || templates.day1;\n\nreturn [{\n  ...lead,\n  followup_body,\n}];"
       },
       "id": "c40145e4-8289-46c4-aff2-4d29a8150d1a",
       "name": "Build Follow-up Message",
@@ -664,7 +663,7 @@
           "parameters": [
             {
               "name": "To",
-              "value": "={{ $json.phone }}"
+              "value": "={{ $json.phone || $json.to || \"\" }}"
             },
             {
               "name": "From",
@@ -1089,6 +1088,17 @@
         [
           {
             "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Respond OK (Reply)",
             "type": "main",
             "index": 0
           }

@@ -81,8 +81,62 @@ function asRecord(value: unknown) {
   return value as Record<string, unknown>;
 }
 
-function pickString(value: unknown) {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
+function pickString(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+function normalizeOperatorPhone(value: unknown) {
+  const raw = pickString(value);
+  if (!raw) return null;
+
+  const normalized = raw.replace(/[\s().-]+/g, "");
+  return /^\+[1-9]\d{7,14}$/.test(normalized) ? normalized : null;
+}
+
+function pickAuthUserMetadataPhone(record: Record<string, unknown> | null) {
+  return normalizeOperatorPhone(asRecord(record?.user_metadata)?.phone) ?? normalizeOperatorPhone(record?.phone);
+}
+
+async function loadAuthOperatorFallbacks(serviceClient: SupabaseClient, userIds: string[]) {
+  const fallbacks = new Map<
+    string,
+    {
+      email: string | null;
+      fullName: string | null;
+      phone: string | null;
+    }
+  >();
+
+  await Promise.all(
+    userIds.map(async (userId) => {
+      try {
+        const { data, error } = await serviceClient.auth.admin.getUserById(userId);
+        if (error || !data.user) {
+          console.warn("operator-alerts auth fallback unavailable", {
+            user_id: userId,
+            message: error?.message ?? "User not found.",
+          });
+          return;
+        }
+
+        fallbacks.set(userId, {
+          email: pickString(data.user.email),
+          fullName: pickString(data.user.user_metadata?.full_name, data.user.user_metadata?.name),
+          phone: pickAuthUserMetadataPhone(asRecord(data.user as unknown)),
+        });
+      } catch (error) {
+        console.warn("operator-alerts auth fallback failed", {
+          user_id: userId,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    })
+  );
+
+  return fallbacks;
 }
 
 function canReceiveOperatorSms(role: string | null) {
@@ -228,11 +282,35 @@ function buildNotificationInsertCandidates(args: {
         created_at: args.createdAt,
       };
 
+  // Older workspaces may only support title/message style rows with no
+  // status/source/path columns. Keep a compact fallback so operator alerts
+  // still persist in-app even before the table is modernized.
+  const compactTitleMessagePayloadWithPayloadJson = {
+    client_id: args.clientId,
+    title: args.title,
+    type: args.type,
+    message: args.body,
+    lead_id: args.leadId,
+    created_at: args.createdAt,
+    payload_json: args.payload,
+  };
+
+  const compactTitleMessagePayload = {
+    client_id: args.clientId,
+    title: args.title,
+    type: args.type,
+    message: args.body,
+    lead_id: args.leadId,
+    created_at: args.createdAt,
+  };
+
   return [
     modernPayload,
     legacyMessagePayload,
     subjectPayload,
     summaryPayload,
+    compactTitleMessagePayloadWithPayloadJson,
+    compactTitleMessagePayload,
     minimalTitlePayload,
     minimalMessagePayload,
   ];
@@ -319,14 +397,23 @@ async function loadOperatorPreferences(serviceClient: SupabaseClient, clientId: 
     profiles.set(id, record ?? {});
   }
 
+  const authFallbackIds = userIds.filter((userId) => {
+    const profile = profiles.get(userId);
+    return !normalizeOperatorPhone(profile?.phone);
+  });
+  const authFallbacks = authFallbackIds.length
+    ? await loadAuthOperatorFallbacks(serviceClient, authFallbackIds)
+    : new Map<string, { email: string | null; fullName: string | null; phone: string | null }>();
+
   return accessList.map<OperatorPreference>((access) => {
     const profile = profiles.get(access.userId) ?? null;
+    const authFallback = authFallbacks.get(access.userId) ?? null;
     return {
       userId: access.userId,
       role: access.role,
-      email: pickString(profile?.email),
-      fullName: pickString(profile?.full_name),
-      phone: pickString(profile?.phone),
+      email: pickString(profile?.email, authFallback?.email),
+      fullName: pickString(profile?.full_name, authFallback?.fullName),
+      phone: normalizeOperatorPhone(profile?.phone) ?? authFallback?.phone,
       smsAlertsEnabled: profile?.sms_alerts_enabled === true,
       pushAlertsEnabled: profile?.push_alerts_enabled !== false,
     };

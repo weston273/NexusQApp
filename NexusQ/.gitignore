@@ -6,6 +6,7 @@ dist/
 .env
 .env.*
 !.env.example
+!supabase/functions/.env.local.example
 .env.local
 
 # Local tooling noise

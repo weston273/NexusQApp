@@ -222,8 +222,8 @@
           "conditions": [
             {
               "id": "32ca4e2d-afd0-4dc3-8b26-be7c3da7cfd8",
-              "leftValue": "={{ $json._skip }}",
-              "rightValue": false,
+              "leftValue": "={{ $json._skip === true }}",
+              "rightValue": true,
               "operator": {
                 "type": "boolean",
                 "operation": "equals"
@@ -255,7 +255,7 @@
           "parameters": [
             {
               "name": "To",
-              "value": "={{ $json.phone }}"
+              "value": "={{ $json.to || $json.phone || \"\" }}"
             },
             {
               "name": "From",
@@ -263,7 +263,7 @@
             },
             {
               "name": "Body",
-              "value": "=Hi {{ $('Get Lead').item.json.name }}, we received your request. We’ll contact you shortly."
+              "value": "=Hi {{ $json.name || 'there' }}, we received your request. We'll contact you shortly."
             }
           ]
         },
@@ -287,7 +287,7 @@
     {
       "parameters": {
         "method": "PATCH",
-        "url": "={{'https://peenmmujciouzulfoykq.supabase.co/rest/v1/leads?id=eq.' + $('Get Lead').item.json.id + '&client_id=eq.' + encodeURIComponent($('Fetch lead_created events (last 5m)').item.json.client_id) }}",
+        "url": "={{'https://peenmmujciouzulfoykq.supabase.co/rest/v1/leads?id=eq.' + $json.lead_id + '&client_id=eq.' + encodeURIComponent($json.client_id) }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -363,11 +363,11 @@
           "parameters": [
             {
               "name": "client_id",
-              "value": "={{ $('Fetch lead_created events (last 5m)').item.json.client_id }}"
+              "value": "={{ $json.client_id }}"
             },
             {
               "name": "lead_id",
-              "value": "={{ $('Fetch lead_created events (last 5m)').item.json.lead_id }}"
+              "value": "={{ $json.lead_id }}"
             },
             {
               "name": "event_type",
@@ -392,7 +392,7 @@
     },
     {
       "parameters": {
-        "jsCode": "let phone = $('Get Lead').item.json.phone || \"\";\n\n// Remove spaces, dashes, brackets\nphone = phone.replace(/[\\s()-]/g, \"\");\n\n// Zimbabwe local format: 0771840862 → +263771840862\nif (phone.startsWith(\"0\")) {\n  phone = \"+263\" + phone.slice(1);\n}\n\n// 263771840862 → +263771840862\nif (phone.startsWith(\"263\")) {\n  phone = \"+\" + phone;\n}\n\n// Ensure it starts with +\nif (!phone.startsWith(\"+\")) {\n  return [{ json: { _skip: true, reason: \"Phone missing country code\" } }];\n}\n\n// Validate E.164 format (10–15 digits after +)\nconst isValid = /^\\+\\d{10,15}$/.test(phone);\n\nif (!isValid) {\n  return [{ json: { _skip: true, reason: \"Invalid phone format\" } }];\n}\n\nreturn [{ json: { ...$('Get Lead').item.json, phone } }];\n"
+        "jsCode": "let phone = String($json.to ?? $json.phone ?? '').trim();\n\n// Strip common formatting while keeping a leading + for E.164.\nphone = phone.replace(/[\\s()-]/g, '');\n\nif (phone.startsWith('00')) {\n  phone = '+' + phone.slice(2);\n}\n\nif (!phone.startsWith('+')) {\n  return [{ json: { ...$json, _skip: true, reason: 'Phone missing country code' } }];\n}\n\nconst isValid = /^\\+\\d{10,15}$/.test(phone);\nif (!isValid) {\n  return [{ json: { ...$json, _skip: true, reason: 'Invalid phone format' } }];\n}\n\nreturn [{ json: { ...$json, phone, to: phone } }];\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -473,12 +473,11 @@
           "conditions": [
             {
               "id": "b2db06ab-317c-44ec-b387-771795367313",
-              "leftValue": "={{ $json.last_contacted_at }}",
-              "rightValue": "",
+              "leftValue": "={{ Array.isArray($json) && $json.length > 0 }}",
+              "rightValue": true,
               "operator": {
-                "type": "string",
-                "operation": "notEmpty",
-                "singleValue": true
+                "type": "boolean",
+                "operation": "equals"
               }
             }
           ],
@@ -526,7 +525,7 @@
     },
     {
       "parameters": {
-        "url": "={{'https://peenmmujciouzulfoykq.supabase.co/rest/v1/leads?id=eq.' + $json.lead_id + '&select=id,last_contacted_at,status&limit=1'}}",
+        "url": "={{'https://peenmmujciouzulfoykq.supabase.co/rest/v1/lead_events?lead_id=eq.' + $json.lead_id + '&event_type=eq.first_response_sent&select=id&limit=1'}}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [

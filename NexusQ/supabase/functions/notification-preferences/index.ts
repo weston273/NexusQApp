@@ -95,6 +95,19 @@ function normalizeStoredPhone(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function normalizeMetadataPhone(value: unknown) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const normalized = trimmed.replace(/[\s().-]+/g, "");
+  return /^\+[1-9]\d{7,14}$/.test(normalized) ? normalized : null;
+}
+
+function parseUserMetadataPhone(user: User) {
+  return normalizeMetadataPhone(user.user_metadata?.phone) ?? normalizeMetadataPhone(user.phone);
+}
+
 function normalizePhoneInput(value: unknown) {
   if (value == null) return null;
   if (typeof value !== "string") {
@@ -117,7 +130,7 @@ function mapPreferences(record: Partial<NotificationPreferencesRecord> | null, u
     id: user.id,
     email: typeof record?.email === "string" ? record.email : user.email ?? null,
     full_name: typeof record?.full_name === "string" ? record.full_name : parseFullName(user),
-    phone: normalizeStoredPhone(record?.phone),
+    phone: normalizeStoredPhone(record?.phone) ?? parseUserMetadataPhone(user),
     sms_alerts_enabled: record?.sms_alerts_enabled === true,
     push_alerts_enabled: record?.push_alerts_enabled !== false,
     created_at: typeof record?.created_at === "string" ? record.created_at : null,
@@ -155,7 +168,7 @@ async function ensureUserProfile(serviceClient: ReturnType<typeof getServiceClie
       id: user.id,
       email: user.email ?? null,
       full_name: parseFullName(user),
-      phone: null,
+      phone: parseUserMetadataPhone(user),
       sms_alerts_enabled: false,
       push_alerts_enabled: true,
       updated_at: timestamp,
