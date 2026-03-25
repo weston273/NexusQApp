@@ -164,6 +164,7 @@ export function Pipeline() {
         open={viewModel.dialogOpen}
         onOpenChange={handleDialogOpenChange}
         saving={viewModel.saving}
+        deleting={viewModel.deleting}
         activeLead={viewModel.activeLead}
         activeLeadSource={viewModel.activeLeadSource}
         activePipeline={viewModel.activePipeline}
@@ -174,7 +175,19 @@ export function Pipeline() {
         onEditValueChange={viewModel.setEditValue}
         parsedEditValue={viewModel.parsedEditValue}
         onSave={() => {
-          void viewModel.saveEdit();
+          void viewModel.saveEdit().then((saved) => {
+            if (saved) {
+              handleDialogOpenChange(false);
+            }
+          });
+        }}
+        canDeleteLead={viewModel.canDeleteLeads}
+        onDelete={() => {
+          void viewModel.deleteLead().then((deleted) => {
+            if (deleted) {
+              handleDialogOpenChange(false);
+            }
+          });
         }}
       />
     </>

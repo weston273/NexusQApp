@@ -67,6 +67,13 @@ Frontend workspace-linking flow uses the same normalization rule before calling 
   - Resolves Workflow E URL from `WORKFLOW_E_STATUS_URL` (preferred), then `WORKFLOW_E_WEBHOOK_URL`, then `WORKFLOW_E_STATUS_FALLBACK_URL`.
   - Returns normalized JSON health payload to frontend.
 
+- `delete-lead`
+  - Verifies caller auth token.
+  - Requires `lead_id`; optional `client_id` must match the resolved workspace.
+  - Verifies caller has active `owner/admin` access to the lead workspace.
+  - Calls `public.delete_lead_cascade(...)` server-side for atomic cleanup.
+  - Deletes the lead plus pipeline, messages, lead events, and lead-linked notifications.
+
 - `notification-preferences`
   - Verifies caller auth token.
   - Reads and updates the current user's operator delivery preferences in `user_profiles`.
@@ -116,6 +123,7 @@ supabase functions deploy workspace-bootstrap --no-verify-jwt
 supabase functions deploy workflow-d-proxy --no-verify-jwt
 supabase functions deploy workflow-a-proxy --no-verify-jwt
 supabase functions deploy workflow-e-proxy --no-verify-jwt
+supabase functions deploy delete-lead --no-verify-jwt
 supabase functions deploy notification-preferences --no-verify-jwt
 supabase functions deploy notification-subscriptions --no-verify-jwt
 ```

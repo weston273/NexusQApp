@@ -13,6 +13,7 @@ NexusQ is the React + Vite + TypeScript frontend for a multi-tenant home-service
   - `workflow-a-proxy`
   - `workflow-d-proxy`
   - `workflow-e-proxy`
+  - `delete-lead`
 - n8n stays behind the Supabase proxy layer. Browser code does not call workflow webhooks directly.
 
 ## Requirements

@@ -13,6 +13,7 @@ import { useAuth } from "@/context/AuthProvider";
 import { useLeads } from "@/hooks/useLeads";
 import { invokeAuthedFunction } from "@/lib/edgeFunctions";
 import { getErrorMessage } from "@/lib/errors";
+import { canManageWorkspaceAccess } from "@/lib/permissions";
 import {
   isPipelineStage,
   normalizePipelineStage,
@@ -59,6 +60,23 @@ async function callWorkflowD(args: {
   return data;
 }
 
+async function deleteLeadRecord(args: {
+  lead_id: string;
+  client_id: string;
+}) {
+  const payload = await invokeAuthedFunction<Record<string, unknown> | null>("delete-lead", {
+    lead_id: args.lead_id,
+    client_id: args.client_id,
+  });
+
+  if (!payload?.ok) {
+    const message = typeof payload?.error === "string" ? payload.error : "Lead delete failed.";
+    throw new Error(message);
+  }
+
+  return payload;
+}
+
 function stageRequiresValue(stage: PipelineStage) {
   return stage === "quoted" || stage === "booked";
 }
@@ -71,7 +89,7 @@ function stageActionLabel(stage: PipelineStage) {
 }
 
 export function usePipelineViewModel() {
-  const { clientId } = useAuth();
+  const { clientId, role } = useAuth();
   const { leads, events, pipelineRows, loading, error, lastLoadedAt, reload } = useLeads();
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -80,6 +98,7 @@ export function usePipelineViewModel() {
 
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
+  const [deleting, setDeleting] = React.useState(false);
   const [activeLead, setActiveLead] = React.useState<PipelineActiveLead>(null);
   const [editStage, setEditStage] = React.useState<PipelineStage>("new");
   const [editValue, setEditValue] = React.useState("0");
@@ -137,6 +156,7 @@ export function usePipelineViewModel() {
   const hasFiltersActive = Boolean(searchQuery.trim()) || stageFilter !== "all";
   const noLeads = uiLeads.length === 0;
   const noResults = uiLeads.length > 0 && filteredUiLeads.length === 0;
+  const canDeleteLeads = canManageWorkspaceAccess(role);
 
   React.useEffect(() => {
     if (filteredUiLeads.length <= DEFAULT_VISIBLE_LEADS && showAllLeads) {
@@ -226,10 +246,10 @@ export function usePipelineViewModel() {
   }, [reload]);
 
   const saveEdit = React.useCallback(async () => {
-    if (!activeLead) return;
+    if (!activeLead) return false;
     if (!clientId) {
       toast.error("Active workspace client_id is required before updating the pipeline.");
-      return;
+      return false;
     }
 
     const previousStage = activeLead.stage;
@@ -243,7 +263,7 @@ export function usePipelineViewModel() {
       const valueNum = parseCurrencyInput(editValue);
       if (stageRequiresValue(editStage) && valueNum <= 0) {
         toast.error(`Add a value greater than 0 before you ${stageActionLabel(editStage)}.`);
-        return;
+        return false;
       }
 
       await callWorkflowD({
@@ -273,10 +293,11 @@ export function usePipelineViewModel() {
         },
       });
 
-      setDialogOpen(false);
       await reload({ silent: true });
+      return true;
     } catch (saveError: unknown) {
       toast.error(getErrorMessage(saveError, `Failed to update ${leadName}`));
+      return false;
     } finally {
       setSaving(false);
     }
@@ -289,6 +310,38 @@ export function usePipelineViewModel() {
       return nextState;
     });
   }, []);
+
+  const deleteLead = React.useCallback(async () => {
+    if (!activeLead) return false;
+    if (!clientId) {
+      toast.error("Active workspace client_id is required before deleting a lead.");
+      return false;
+    }
+    if (!canDeleteLeads) {
+      toast.error("Only workspace owners and admins can delete leads.");
+      return false;
+    }
+
+    const leadId = activeLead.id;
+    const leadName = activeLead.name;
+
+    try {
+      setDeleting(true);
+      await deleteLeadRecord({
+        lead_id: leadId,
+        client_id: clientId,
+      });
+      clearStageOverride(leadId);
+      toast.success(`${leadName} was deleted from NexusQ.`);
+      await reload({ silent: true });
+      return true;
+    } catch (deleteError: unknown) {
+      toast.error(getErrorMessage(deleteError, `Failed to delete ${leadName}`));
+      return false;
+    } finally {
+      setDeleting(false);
+    }
+  }, [activeLead, canDeleteLeads, clearStageOverride, clientId, reload]);
 
   const moveLeadStage = React.useCallback(
     async (lead: UiLead, direction: "prev" | "next") => {
@@ -483,6 +536,8 @@ export function usePipelineViewModel() {
     dialogOpen,
     setDialogOpen: handleDialogOpenChange,
     saving,
+    deleting,
+    canDeleteLeads,
     activeLead,
     activeLeadSource,
     activePipeline,
@@ -493,5 +548,6 @@ export function usePipelineViewModel() {
     setEditValue,
     parsedEditValue: parseCurrencyInput(editValue),
     saveEdit,
+    deleteLead,
   };
 }
