@@ -1,0 +1,22 @@
+0 verbose cli C:\Program Files\nodejs\node.exe C:\Users\Debra\AppData\Roaming\npm\node_modules\npm\bin\npm-cli.js
+1 info using npm@11.5.1
+0 verbose cli C:\Program Files\nodejs\node.exe C:\Users\Debra\AppData\Roaming\npm\node_modules\npm\bin\npm-cli.js
+2 info using node@v24.1.0
+3 silly config load:file:C:\Users\Debra\AppData\Roaming\npm\node_modules\npm\npmrc
+4 silly config load:file:C:\Users\Debra\Desktop\JNK\NexusQApp\NexusQ\.npmrc
+5 silly config load:file:C:\Users\Debra\.npmrc
+1 info using npm@11.5.1
+6 silly config load:file:C:\Users\Debra\AppData\Roaming\npm\etc\npmrc
+2 info using node@v24.1.0
+3 silly config load:file:C:\Users\Debra\AppData\Roaming\npm\node_modules\npm\npmrc
+7 verbose title npm exec supabase@latest functions deploy workflow-f-agent --use-api --project-ref peenmmujciouzulfoykq --no-verify-jwt
+4 silly config load:file:C:\Users\Debra\Desktop\JNK\NexusQApp\NexusQ\.npmrc
+5 silly config load:file:C:\Users\Debra\.npmrc
+6 silly config load:file:C:\Users\Debra\AppData\Roaming\npm\etc\npmrc
+7 verbose title npm exec supabase@latest functions list --project-ref peenmmujciouzulfoykq
+8 verbose argv "exec" "--yes" "--" "supabase@latest" "functions" "deploy" "workflow-f-agent" "--use-api" "--project-ref" "peenmmujciouzulfoykq" "--no-verify-jwt"
+8 verbose argv "exec" "--yes" "--" "supabase@latest" "functions" "list" "--project-ref" "peenmmujciouzulfoykq"
+9 verbose logfile logs-max:10 dir:C:\Users\Debra\Desktop\JNK\NexusQApp\.npm-cache-supabase\_logs\2026-03-27T21_18_46_195Z-
+9 verbose logfile logs-max:10 dir:C:\Users\Debra\Desktop\JNK\NexusQApp\.npm-cache-supabase\_logs\2026-03-27T21_18_46_195Z-
+10 verbose logfile C:\Users\Debra\Desktop\JNK\NexusQApp\.npm-cache-supabase\_logs\2026-03-27T21_18_46_195Z-debug-0.log
+10 verbose logfile C:\Users\Debra\Desktop\JNK\NexusQApp\.npm-cache-supabase\_logs\2026-03-27T21_18_46_195Z-debug-0.log
