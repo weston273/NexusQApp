@@ -40,6 +40,17 @@ function getProvider() {
   return (getOptionalEnv("LLM_PROVIDER") ?? getOptionalEnv("AI_PROVIDER") ?? "").toLowerCase().trim();
 }
 
+export function resolveLlmModel(...values: unknown[]) {
+  return (
+    pickString(
+      getOptionalEnv("LLM_MODEL"),
+      getOptionalEnv("AI_MODEL"),
+      getOptionalEnv("OPENROUTER_MODEL"),
+      ...values
+    ) ?? "gpt-4.1-mini"
+  );
+}
+
 function getOpenAiApiKey() {
   return getOptionalEnv("OPENAI_API_KEY") ?? getOptionalEnv("NEXUSQ_OPENAI_API_KEY");
 }

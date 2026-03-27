@@ -1,7 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.94.0";
 import type { User } from "npm:@supabase/supabase-js@2.94.0";
 import { corsResponse, jsonResponse } from "../_shared/cors.ts";
-import { generateStructuredResponse } from "../_shared/openai.ts";
+import { generateStructuredResponse, resolveLlmModel } from "../_shared/openai.ts";
 import { getSupabaseAnonKey, getSupabaseServiceRoleKey, getSupabaseUrl } from "../_shared/supabase-env.ts";
 import { resolveTenantForUser } from "../_shared/tenant.ts";
 
@@ -282,7 +282,7 @@ Deno.serve(async (request) => {
       .eq("client_id", tenant.clientId)
       .maybeSingle();
 
-    const model = pickString(behaviorRow?.model) ?? "gpt-4.1-mini";
+    const model = resolveLlmModel(behaviorRow?.model);
     const action = body.action ?? "status";
 
     if (action === "status") {

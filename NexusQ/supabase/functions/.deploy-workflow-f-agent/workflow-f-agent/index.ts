@@ -1,7 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.94.0";
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.94.0";
 import { buildCorsHeaders, corsResponse, jsonResponse } from "../_shared/cors.ts";
-import { generateStructuredResponse } from "../_shared/openai.ts";
+import { generateStructuredResponse, resolveLlmModel } from "../_shared/openai.ts";
 import { createOperatorAlert } from "../_shared/operator-alerts.ts";
 import { applyPipelineStageUpdate, normalizeStage, parseNumericOrNull, type PipelineStage } from "../_shared/pipeline-update.ts";
 import { getSupabaseServiceRoleKey, getSupabaseUrl } from "../_shared/supabase-env.ts";
@@ -272,7 +272,7 @@ async function loadBehaviorConfig(serviceClient: SupabaseClient, clientId: strin
 
   return {
     isEnabled: row.is_enabled === true,
-    model: pickString(row.model) ?? "gpt-4.1-mini",
+    model: resolveLlmModel(row.model),
     assistantName: pickString(row.assistant_name) ?? "NexusQ Assistant",
     tone: pickString(row.tone) ?? "friendly",
     systemPrompt: pickString(row.system_prompt),
