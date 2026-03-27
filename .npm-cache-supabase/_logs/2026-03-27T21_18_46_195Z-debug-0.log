@@ -441,3 +441,16 @@
 181 verbose npm  v11.5.1
 182 verbose exit 13
 183 verbose code 13
+170 info run supabase@2.84.4 postinstall { code: 13, signal: null }
+171 silly unfinished npm timer reify 1774646335978
+172 silly unfinished npm timer reify:build 1774646353905
+173 silly unfinished npm timer build 1774646353906
+174 silly unfinished npm timer build:deps 1774646353907
+175 silly unfinished npm timer build:run:postinstall 1774646353962
+176 silly unfinished npm timer build:run:postinstall:node_modules/supabase 1774646353963
+177 verbose cwd C:\Users\Debra\Desktop\JNK\NexusQApp\NexusQ
+178 verbose os Windows_NT 10.0.26200
+179 verbose node v24.1.0
+180 verbose npm  v11.5.1
+181 verbose exit 13
+182 verbose code 13
