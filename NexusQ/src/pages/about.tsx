@@ -83,6 +83,12 @@ const workflowCards = [
     summary: "Aggregates workflow health signals so operators can trust what the app is showing.",
     icon: Activity,
   },
+  {
+    key: "F",
+    title: "Workflow F",
+    summary: "Runs the AI SMS agent, uses client pricing and conversation memory, and advances pipeline stages when intent is clear.",
+    icon: Workflow,
+  },
 ];
 
 const outcomePoints = [
@@ -182,7 +188,7 @@ export function AboutPage() {
           <CardTitle className="text-base">Workflow Map</CardTitle>
           <CardDescription>What each workflow contributes in business terms.</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
           {workflowCards.map((workflow) => {
             const Icon = workflow.icon;
 

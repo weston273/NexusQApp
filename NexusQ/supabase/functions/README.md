@@ -67,6 +67,24 @@ Frontend workspace-linking flow uses the same normalization rule before calling 
   - Resolves Workflow E URL from `WORKFLOW_E_STATUS_URL` (preferred), then `WORKFLOW_E_WEBHOOK_URL`, then `WORKFLOW_E_STATUS_FALLBACK_URL`.
   - Returns normalized JSON health payload to frontend.
 
+- `workflow-f-agent`
+  - Handles inbound Twilio SMS conversations for leads without relying on n8n runtime state.
+  - Matches the lead by customer phone plus workspace sender phone for tenant-safe routing.
+  - Initializes and loads business memory from `client_profiles`, `pricing_models`, `business_rules`, and `ai_behavior_config`.
+  - Persists conversation memory in `lead_ai_sessions`.
+  - Stores inbound and outbound SMS in `messages`.
+  - If business context is incomplete, opens a `client_onboarding_sessions` flow and alerts operators instead of hallucinating.
+  - Writes `reply_received`, `ai_message_sent`, `intent_detected`, `pricing_shared`, and `stage_updated` events to `lead_events`.
+  - Reuses shared Workflow D update logic so AI-driven stage changes follow the same server-side persistence and fallback path as manual updates.
+  - Falls back to a safe SMS reply if the AI request fails or times out.
+
+- `client-ai-onboarding`
+  - Verifies caller auth token.
+  - Requires `owner/admin` access to the workspace.
+  - Starts or continues the AI onboarding conversation for a client.
+  - Uses OpenAI to extract business description, pricing, offers, ideal-customer fit, limitations, and tone from owner/admin responses.
+  - Persists structured business memory into `client_profiles`, `pricing_models`, `business_rules`, `ai_behavior_config`, and `client_onboarding_sessions`.
+
 - `delete-lead`
   - Verifies caller auth token.
   - Requires `lead_id`; optional `client_id` must match the resolved workspace.
@@ -110,6 +128,10 @@ Optional:
 - `TWILIO_ACCOUNT_SID` (required for operator SMS delivery)
 - `TWILIO_AUTH_TOKEN` (required for operator SMS delivery)
 - `TWILIO_FROM_NUMBER` (required for operator SMS delivery)
+- `OPENAI_API_KEY` (required for `workflow-f-agent`)
+- `LLM_PROVIDER` (optional, set to `openrouter` to force OpenRouter)
+- `OPENROUTER_API_KEYS` (optional comma-separated key pool for OpenRouter failover)
+- `OPENROUTER_API_KEY_1` ... `OPENROUTER_API_KEY_10` (optional numbered OpenRouter key pool)
 - `WEB_PUSH_VAPID_PUBLIC_KEY` (required for browser push delivery)
 - `WEB_PUSH_VAPID_PRIVATE_KEY` (required for browser push delivery)
 - `WEB_PUSH_VAPID_SUBJECT` (optional contact subject for web push)
@@ -123,6 +145,8 @@ supabase functions deploy workspace-bootstrap --no-verify-jwt
 supabase functions deploy workflow-d-proxy --no-verify-jwt
 supabase functions deploy workflow-a-proxy --no-verify-jwt
 supabase functions deploy workflow-e-proxy --no-verify-jwt
+supabase functions deploy workflow-f-agent --no-verify-jwt
+supabase functions deploy client-ai-onboarding --no-verify-jwt
 supabase functions deploy delete-lead --no-verify-jwt
 supabase functions deploy notification-preferences --no-verify-jwt
 supabase functions deploy notification-subscriptions --no-verify-jwt

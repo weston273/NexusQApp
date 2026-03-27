@@ -58,6 +58,9 @@ export function inferWorkflowKey(serviceName: string): WorkflowKey | null {
   if (normalized.startsWith("e") || normalized.includes("workflow e") || normalized.includes("health")) {
     return "E";
   }
+  if (normalized.startsWith("f") || normalized.includes("workflow f") || normalized.includes("ai") || normalized.includes("conversation")) {
+    return "F" as WorkflowKey;
+  }
 
   return null;
 }
@@ -167,6 +170,9 @@ export function pickHealthIcon(serviceName: string): LucideIcon {
   }
   if (normalized.startsWith("e") || normalized.includes("workflow e") || normalized.includes("health")) {
     return ShieldCheck;
+  }
+  if (normalized.startsWith("f") || normalized.includes("workflow f") || normalized.includes("ai") || normalized.includes("conversation")) {
+    return Cpu;
   }
 
   return Activity;
