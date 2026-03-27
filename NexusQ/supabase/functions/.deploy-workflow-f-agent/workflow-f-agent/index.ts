@@ -185,14 +185,14 @@ async function findLeadContext(serviceClient: SupabaseClient, inbound: InboundPa
     .eq("clients.phone", inbound.to)
     .order("last_contacted_at", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
-    .limit(2);
+    .limit(1);
 
   if (error) {
     throw new Error(`Failed to match inbound lead: ${error.message}`);
   }
 
   const rows = Array.isArray(data) ? data : [];
-  if (rows.length !== 1) return null;
+  if (!rows.length) return null;
 
   const row = asRecord(rows[0]);
   const client = asRecord(row?.clients);
@@ -396,6 +396,14 @@ async function insertMessage(serviceClient: SupabaseClient, args: {
   status?: string | null;
   metadata?: Record<string, unknown> | null;
 }) {
+  const payload =
+    args.status || args.metadata
+      ? {
+          ...(args.metadata ?? {}),
+          ...(args.status ? { message_status: args.status } : {}),
+        }
+      : null;
+
   const { error } = await serviceClient.from("messages").insert({
     client_id: args.clientId,
     lead_id: args.leadId,
@@ -403,9 +411,8 @@ async function insertMessage(serviceClient: SupabaseClient, args: {
     channel: "sms",
     provider: "twilio",
     provider_message_id: args.providerMessageId ?? null,
-    status: args.status ?? null,
     body: args.body,
-    payload_json: args.metadata ?? null,
+    payload_json: payload,
   });
 
   if (error) throw new Error(`Failed to insert message: ${error.message}`);
