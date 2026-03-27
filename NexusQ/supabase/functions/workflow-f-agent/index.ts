@@ -185,14 +185,14 @@ async function findLeadContext(serviceClient: SupabaseClient, inbound: InboundPa
     .eq("clients.phone", inbound.to)
     .order("last_contacted_at", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
-    .limit(2);
+    .limit(1);
 
   if (error) {
     throw new Error(`Failed to match inbound lead: ${error.message}`);
   }
 
   const rows = Array.isArray(data) ? data : [];
-  if (rows.length !== 1) return null;
+  if (!rows.length) return null;
 
   const row = asRecord(rows[0]);
   const client = asRecord(row?.clients);

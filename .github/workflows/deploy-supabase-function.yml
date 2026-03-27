@@ -1,6 +1,14 @@
 name: Deploy Supabase Function
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/deploy-supabase-function.yml"
+      - "NexusQ/supabase/functions/workflow-f-agent/**"
+      - "NexusQ/supabase/functions/client-ai-onboarding/**"
+      - "NexusQ/supabase/functions/_shared/**"
   workflow_dispatch:
     inputs:
       function_name:
@@ -31,7 +39,25 @@ jobs:
       - name: Verify CLI
         run: supabase --version
 
+      - name: Ensure deploy secret exists
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
+            echo "SUPABASE_ACCESS_TOKEN is not configured in GitHub Actions secrets."
+            exit 1
+          fi
+
+      - name: Deploy Workflow F on push
+        if: github.event_name == 'push'
+        working-directory: NexusQ
+        run: >
+          supabase functions deploy
+          workflow-f-agent
+          --use-api
+          --project-ref "$PROJECT_ID"
+          --no-verify-jwt
+
       - name: Deploy selected function
+        if: github.event_name == 'workflow_dispatch'
         working-directory: NexusQ
         run: >
           supabase functions deploy
