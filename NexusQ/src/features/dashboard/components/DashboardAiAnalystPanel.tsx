@@ -37,6 +37,7 @@ export function DashboardAiAnalystPanel({
 }: DashboardAiAnalystPanelProps) {
   const navigate = useNavigate();
   const [question, setQuestion] = React.useState("");
+  const visibleThread = React.useMemo(() => thread.slice(-2), [thread]);
 
   const submitQuestion = React.useCallback(async () => {
     const trimmed = question.trim();
@@ -201,7 +202,10 @@ export function DashboardAiAnalystPanel({
             </div>
 
             <div className="rounded-2xl border bg-card p-5">
-              <div className="text-sm font-semibold">Conversation Thread</div>
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-sm font-semibold">Conversation Thread</div>
+                <div className="text-[11px] text-muted-foreground">Showing latest exchange only</div>
+              </div>
               <div className="mt-4 space-y-3">
                 {!thread.length ? (
                   <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
@@ -209,7 +213,7 @@ export function DashboardAiAnalystPanel({
                   </div>
                 ) : null}
 
-                {thread.map((item) => (
+                {visibleThread.map((item) => (
                   <div
                     key={item.id}
                     className={cn(
