@@ -98,6 +98,21 @@ Browser push key placement:
 - Frontend: `VITE_WEB_PUSH_VAPID_PUBLIC_KEY` in `.env.local` and in your deployment platform's frontend env settings
 - Supabase secrets: `WEB_PUSH_VAPID_PUBLIC_KEY`, `WEB_PUSH_VAPID_PRIVATE_KEY`, `WEB_PUSH_VAPID_SUBJECT`
 
+## Google Auth Setup
+
+If Google signup or login returns `Unsupported provider: provider is not enabled`, the Supabase project is rejecting OAuth before NexusQ can redirect.
+
+To enable it:
+
+1. Open Supabase for the linked project and go to `Auth -> Sign In / Providers -> Google`.
+2. Enable the Google provider and add the Google client ID and client secret for that Supabase project.
+3. Add the NexusQ callback URL to the provider redirect allow-list:
+   - local default: `http://localhost:3000/auth/callback`
+   - production: use `VITE_AUTH_REDIRECT_URL` if you set one, otherwise `https://your-app-host/auth/callback`
+4. Make sure the same callback URL is allowed in the Google Cloud OAuth client configuration as well.
+
+NexusQ now surfaces this misconfiguration directly in the login and signup UI instead of only showing the raw Supabase validation error.
+
 ## Multi-Client Rollout
 
 The current repo includes a tenant-hardening migration and updated edge functions for the multi-client rollout.

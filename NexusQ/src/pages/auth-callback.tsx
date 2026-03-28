@@ -1,7 +1,8 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ensureLiveSession, exchangeOAuthCodeForSession } from "@/lib/auth";
+import { ensureLiveSession, exchangeOAuthCodeForSession, getOAuthRedirectUrl } from "@/lib/auth";
+import { formatSupabaseAuthErrorMessage } from "@/lib/auth-messages";
 import { clearPendingSignupPhone, persistCurrentUserPhone, readPendingSignupPhone, readUserMetadataPhone } from "@/lib/profile-contact";
 
 export function AuthCallbackPage() {
@@ -14,7 +15,7 @@ export function AuthCallbackPage() {
       const errorCode = params.get("error");
       const errorDescription = params.get("error_description");
       if (errorCode) {
-        setError(errorDescription || errorCode);
+        setError(formatSupabaseAuthErrorMessage(errorDescription || errorCode, { redirectTo: getOAuthRedirectUrl() ?? null }));
         return;
       }
       const code = params.get("code");
@@ -25,7 +26,7 @@ export function AuthCallbackPage() {
 
       const { data, error: exchangeError } = await exchangeOAuthCodeForSession(code);
       if (exchangeError) {
-        setError(exchangeError.message);
+        setError(formatSupabaseAuthErrorMessage(exchangeError.message, { redirectTo: getOAuthRedirectUrl() ?? null }));
         return;
       }
 

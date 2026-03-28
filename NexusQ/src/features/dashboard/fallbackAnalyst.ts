@@ -156,7 +156,6 @@ export function buildDashboardFallbackAnswer(
 ): DashboardAiAnswer {
   const lower = question.toLowerCase();
   const evidence: string[] = [];
-  const followUps: string[] = [];
   const referencedLeads: string[] = [];
   const revenueLabel = formatUsd(context.todaySnapshot.revenue);
   const quoted = quotedLeads(context);

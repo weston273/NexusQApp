@@ -1,6 +1,14 @@
 import { createClient } from "npm:@supabase/supabase-js@2.94.0";
 import type { SupabaseClient, User } from "npm:@supabase/supabase-js@2.94.0";
 import { corsResponse, jsonResponse } from "../_shared/cors.ts";
+import {
+  type DashboardAiCircuitState,
+  getDashboardAiCircuitCooldownRemainingMs,
+  isDashboardAiCircuitOpen,
+  normalizeDashboardAiCircuitState,
+  recordDashboardAiCircuitFailure,
+  recordDashboardAiCircuitSuccess,
+} from "../_shared/dashboard-ai-circuit-breaker.ts";
 import { generateStructuredResponse, resolveLlmModel } from "../_shared/openai.ts";
 import { getSupabaseAnonKey, getSupabaseServiceRoleKey, getSupabaseUrl } from "../_shared/supabase-env.ts";
 
@@ -136,6 +144,8 @@ type DashboardAnswer = {
 
 type WorkspaceContext = Awaited<ReturnType<typeof loadWorkspaceContext>>;
 
+const dashboardAiCircuitStateByClientId = new Map<string, DashboardAiCircuitState>();
+
 function asRecord(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   return value as Record<string, unknown>;
@@ -221,10 +231,6 @@ function normalizeStage(value: string | null | undefined) {
     return "qualifying";
   }
   return "new";
-}
-
-function normalizeStatus(value: string | null | undefined) {
-  return String(value ?? "new").toLowerCase().trim() || "new";
 }
 
 function parseTimestamp(value: string | null | undefined) {
@@ -1102,6 +1108,37 @@ function shouldUseFallbackAnalysis(message: string) {
   );
 }
 
+function getDashboardAiCircuitState(clientId: string, now = Date.now()) {
+  const state = normalizeDashboardAiCircuitState(dashboardAiCircuitStateByClientId.get(clientId), now);
+  if (!state.failureCount && state.cooldownUntil == null) {
+    dashboardAiCircuitStateByClientId.delete(clientId);
+    return state;
+  }
+
+  dashboardAiCircuitStateByClientId.set(clientId, state);
+  return state;
+}
+
+function recordDashboardAiFailure(clientId: string, now = Date.now()) {
+  const nextState = recordDashboardAiCircuitFailure(dashboardAiCircuitStateByClientId.get(clientId), now);
+  if (!nextState.failureCount && nextState.cooldownUntil == null) {
+    dashboardAiCircuitStateByClientId.delete(clientId);
+  } else {
+    dashboardAiCircuitStateByClientId.set(clientId, nextState);
+  }
+  return nextState;
+}
+
+function recordDashboardAiSuccessForClient(clientId: string) {
+  const nextState = recordDashboardAiCircuitSuccess();
+  if (!nextState.failureCount && nextState.cooldownUntil == null) {
+    dashboardAiCircuitStateByClientId.delete(clientId);
+  } else {
+    dashboardAiCircuitStateByClientId.set(clientId, nextState);
+  }
+  return nextState;
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") {
     return corsResponse(request);
@@ -1127,28 +1164,54 @@ Deno.serve(async (request) => {
     const serviceClient = getServiceClient();
     const access = await requireWorkspaceAccess(serviceClient, user.id, clientId);
     const context = await loadWorkspaceContext(serviceClient, clientId);
+    let circuitState = getDashboardAiCircuitState(clientId);
+    let circuitBreakerActive = isDashboardAiCircuitOpen(circuitState);
+    let circuitBreakerUntil =
+      circuitState.cooldownUntil != null ? new Date(circuitState.cooldownUntil).toISOString() : null;
+    let circuitBreakerRemainingMs = getDashboardAiCircuitCooldownRemainingMs(circuitState);
 
     if (action === "briefing") {
       let briefing: DashboardBriefing;
-      let usedFallback = false;
-      try {
-        briefing = await generateStructuredResponse<DashboardBriefing>({
-          model: context.model,
-          systemText: buildBriefingPrompt(access.role),
-          userInput: {
-            generated_at: new Date().toISOString(),
-            workspace_context: context,
-          },
-          schemaName: "dashboard_briefing",
-          schema: briefingSchema,
-          maxOutputTokens: 900,
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (!shouldUseFallbackAnalysis(message)) throw error;
-        console.warn("dashboard-ai-briefing: falling back to rules-based briefing", message);
+      let usedFallback = circuitBreakerActive;
+      if (circuitBreakerActive) {
         briefing = buildFallbackBriefing(context);
-        usedFallback = true;
+      } else {
+        try {
+          briefing = await generateStructuredResponse<DashboardBriefing>({
+            model: context.model,
+            systemText: buildBriefingPrompt(access.role),
+            userInput: {
+              generated_at: new Date().toISOString(),
+              workspace_context: context,
+            },
+            schemaName: "dashboard_briefing",
+            schema: briefingSchema,
+            maxOutputTokens: 900,
+          });
+          circuitState = recordDashboardAiSuccessForClient(clientId);
+          circuitBreakerActive = isDashboardAiCircuitOpen(circuitState);
+          circuitBreakerUntil =
+            circuitState.cooldownUntil != null ? new Date(circuitState.cooldownUntil).toISOString() : null;
+          circuitBreakerRemainingMs = getDashboardAiCircuitCooldownRemainingMs(circuitState);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (!shouldUseFallbackAnalysis(message)) throw error;
+          const nextState = recordDashboardAiFailure(clientId);
+          circuitState = nextState;
+          circuitBreakerActive = isDashboardAiCircuitOpen(circuitState);
+          circuitBreakerUntil =
+            circuitState.cooldownUntil != null ? new Date(circuitState.cooldownUntil).toISOString() : null;
+          circuitBreakerRemainingMs = getDashboardAiCircuitCooldownRemainingMs(circuitState);
+          console.warn("dashboard-ai-briefing: falling back to rules-based briefing", {
+            client_id: clientId,
+            message,
+            circuit_breaker_until:
+              nextState.cooldownUntil != null ? new Date(nextState.cooldownUntil).toISOString() : null,
+            consecutive_failures: nextState.failureCount,
+          });
+          briefing = buildFallbackBriefing(context);
+          usedFallback = true;
+        }
       }
 
       return jsonResponse(
@@ -1157,6 +1220,9 @@ Deno.serve(async (request) => {
           action,
           briefing,
           fallback_used: usedFallback,
+          circuit_breaker_active: circuitBreakerActive,
+          circuit_breaker_until: circuitBreakerUntil,
+          circuit_breaker_remaining_ms: circuitBreakerRemainingMs,
           generated_at: new Date().toISOString(),
         },
         200,
@@ -1170,27 +1236,48 @@ Deno.serve(async (request) => {
     }
 
     let answer: DashboardAnswer;
-    let usedFallback = false;
-    try {
-      answer = await generateStructuredResponse<DashboardAnswer>({
-        model: context.model,
-        systemText: buildAnswerPrompt(access.role),
-        userInput: {
-          generated_at: new Date().toISOString(),
-          operator_question: question,
-          prior_thread: sanitizeHistory(body.history),
-          workspace_context: context,
-        },
-        schemaName: "dashboard_question_answer",
-        schema: answerSchema,
-        maxOutputTokens: 900,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (!shouldUseFallbackAnalysis(message)) throw error;
-      console.warn("dashboard-ai-briefing: falling back to rules-based answer", message);
+    let usedFallback = circuitBreakerActive;
+    if (circuitBreakerActive) {
       answer = buildFallbackAnswer(context, question);
-      usedFallback = true;
+    } else {
+      try {
+        answer = await generateStructuredResponse<DashboardAnswer>({
+          model: context.model,
+          systemText: buildAnswerPrompt(access.role),
+          userInput: {
+            generated_at: new Date().toISOString(),
+            operator_question: question,
+            prior_thread: sanitizeHistory(body.history),
+            workspace_context: context,
+          },
+          schemaName: "dashboard_question_answer",
+          schema: answerSchema,
+          maxOutputTokens: 900,
+        });
+        circuitState = recordDashboardAiSuccessForClient(clientId);
+        circuitBreakerActive = isDashboardAiCircuitOpen(circuitState);
+        circuitBreakerUntil =
+          circuitState.cooldownUntil != null ? new Date(circuitState.cooldownUntil).toISOString() : null;
+        circuitBreakerRemainingMs = getDashboardAiCircuitCooldownRemainingMs(circuitState);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!shouldUseFallbackAnalysis(message)) throw error;
+        const nextState = recordDashboardAiFailure(clientId);
+        circuitState = nextState;
+        circuitBreakerActive = isDashboardAiCircuitOpen(circuitState);
+        circuitBreakerUntil =
+          circuitState.cooldownUntil != null ? new Date(circuitState.cooldownUntil).toISOString() : null;
+        circuitBreakerRemainingMs = getDashboardAiCircuitCooldownRemainingMs(circuitState);
+        console.warn("dashboard-ai-briefing: falling back to rules-based answer", {
+          client_id: clientId,
+          message,
+          circuit_breaker_until:
+            nextState.cooldownUntil != null ? new Date(nextState.cooldownUntil).toISOString() : null,
+          consecutive_failures: nextState.failureCount,
+        });
+        answer = buildFallbackAnswer(context, question);
+        usedFallback = true;
+      }
     }
 
     return jsonResponse(
@@ -1199,6 +1286,9 @@ Deno.serve(async (request) => {
         action,
         answer,
         fallback_used: usedFallback,
+        circuit_breaker_active: circuitBreakerActive,
+        circuit_breaker_until: circuitBreakerUntil,
+        circuit_breaker_remaining_ms: circuitBreakerRemainingMs,
         generated_at: new Date().toISOString(),
       },
       200,

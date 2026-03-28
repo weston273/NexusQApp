@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ensureLiveSession, signInWithGoogleOAuth, signUpWithEmail } from "@/lib/auth";
+import { ensureLiveSession, getOAuthRedirectUrl, signInWithGoogleOAuth, signUpWithEmail } from "@/lib/auth";
+import { formatSupabaseAuthErrorMessage } from "@/lib/auth-messages";
 import { normalizeE164PhoneInput } from "@/lib/phone";
 import { clearPendingSignupPhone, persistCurrentUserPhone, storePendingSignupPhone } from "@/lib/profile-contact";
 
@@ -83,7 +84,7 @@ export function SignupPage() {
     storePendingSignupPhone(normalizedPhone);
     const { error: oauthError } = await signInWithGoogleOAuth();
     if (oauthError) {
-      setError(oauthError.message);
+      setError(formatSupabaseAuthErrorMessage(oauthError.message, { redirectTo: getOAuthRedirectUrl() ?? null }));
       clearPendingSignupPhone();
       setLoading(false);
     }
