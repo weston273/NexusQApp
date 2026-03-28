@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { DashboardActivityCard } from "@/features/dashboard/components/DashboardActivityCard";
 import { DashboardAiAnalystPanel } from "@/features/dashboard/components/DashboardAiAnalystPanel";
-import { DashboardAttentionPanel } from "@/features/dashboard/components/DashboardAttentionPanel";
 import { DashboardHero } from "@/features/dashboard/components/DashboardHero";
 import { DashboardMetricsSection } from "@/features/dashboard/components/DashboardMetricsSection";
 import { DashboardOverviewSection } from "@/features/dashboard/components/DashboardOverviewSection";
@@ -16,7 +15,16 @@ import { useDashboardViewModel } from "@/features/dashboard/useDashboardViewMode
 export function Dashboard() {
   const navigate = useNavigate();
   const viewModel = useDashboardViewModel();
-  const analyst = useDashboardAiAnalyst();
+  const analyst = useDashboardAiAnalyst({
+    leads: viewModel.leads,
+    pipelineRows: viewModel.pipelineRows,
+    events: viewModel.events,
+    kpis: viewModel.kpis,
+    attentionItems: viewModel.attentionItems,
+    recentActivity: viewModel.recentActivity,
+    intelligence: viewModel.intelligence,
+    todaySnapshot: viewModel.todaySnapshot,
+  });
 
   const handleRefresh = () => {
     viewModel.refresh();
@@ -71,6 +79,7 @@ export function Dashboard() {
       />
 
       <DashboardAiAnalystPanel
+        attentionItems={viewModel.attentionItems}
         briefing={analyst.briefing}
         thread={analyst.thread}
         loading={analyst.loading}
@@ -80,8 +89,6 @@ export function Dashboard() {
         onRefresh={analyst.refresh}
         onAskQuestion={analyst.askQuestion}
       />
-
-      <DashboardAttentionPanel items={viewModel.attentionItems} />
 
       <DashboardPipelineSummary
         data={viewModel.pipelineSummary}

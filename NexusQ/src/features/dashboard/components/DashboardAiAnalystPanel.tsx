@@ -1,14 +1,15 @@
 import * as React from "react";
-import { AlertTriangle, Brain, RefreshCcw, Send, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowRight, RefreshCcw, Send, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import type { DashboardAiBriefing, DashboardAiThreadItem } from "@/features/dashboard/types";
+import type { AttentionItem, DashboardAiBriefing, DashboardAiThreadItem } from "@/features/dashboard/types";
 
 type DashboardAiAnalystPanelProps = {
+  attentionItems: AttentionItem[];
   briefing: DashboardAiBriefing | null;
   thread: DashboardAiThreadItem[];
   loading: boolean;
@@ -25,7 +26,20 @@ function priorityClasses(priority: "high" | "medium" | "low") {
   return "bg-status-success/15 text-status-success border-status-success/30";
 }
 
+function toneClasses(tone: AttentionItem["tone"]) {
+  if (tone === "high") return "border-status-error/25 bg-status-error/5";
+  if (tone === "medium") return "border-status-warning/30 bg-status-warning/10";
+  return "border-border/60 bg-muted/20";
+}
+
+function badgeClasses(tone: AttentionItem["tone"]) {
+  if (tone === "high") return "text-status-error bg-status-error/10";
+  if (tone === "medium") return "text-status-warning bg-status-warning/15";
+  return "text-muted-foreground bg-background";
+}
+
 export function DashboardAiAnalystPanel({
+  attentionItems,
   briefing,
   thread,
   loading,
@@ -52,20 +66,25 @@ export function DashboardAiAnalystPanel({
     <Card className="border-none bg-gradient-to-br from-muted/20 via-background to-muted/10">
       <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="space-y-1.5">
-          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.22em] text-muted-foreground">
-            <Brain className="h-3.5 w-3.5" />
-            AI Operations Analyst
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-base">Needs Attention Now</CardTitle>
+            <Badge variant="outline" className="text-[10px] uppercase tracking-[0.22em]">
+              NexusQ
+            </Badge>
           </div>
-          <CardTitle className="text-xl">OpenRouter-enhanced workspace analysis</CardTitle>
           <CardDescription>
-            Ask about lead flow, conversations, follow-up activity, quotes, booked deals, and system behavior across this workspace.
+            Priority actions, grounded answers, and next steps surfaced from live lead, response, revenue, conversation, and system signals across this workspace.
           </CardDescription>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Badge variant="outline" className="text-[10px] uppercase tracking-[0.22em]">
             {lastLoadedAt ? `Updated ${lastLoadedAt.toLocaleTimeString()}` : "Awaiting analysis"}
           </Badge>
+          <Button variant="outline" size="sm" className="h-9 gap-2" onClick={() => navigate("/pipeline")}>
+            Review Pipeline
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Button>
           <Button variant="outline" size="sm" className="h-9 gap-2" onClick={onRefresh} disabled={loading || asking}>
             <RefreshCcw className={cn("h-3.5 w-3.5", loading ? "animate-spin" : "")} />
             Refresh Analysis
@@ -79,6 +98,50 @@ export function DashboardAiAnalystPanel({
             {error}
           </div>
         ) : null}
+
+        {attentionItems.length ? (
+          <div className="grid gap-3 xl:grid-cols-3">
+            {attentionItems.map((item) => {
+              const Icon = item.icon;
+
+              return (
+                <div key={`${item.title}-${item.actionPath}`} className={cn("rounded-2xl border p-4", toneClasses(item.tone))}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="rounded-xl bg-background/80 p-2">
+                      <Icon className="h-4 w-4" />
+                    </div>
+                    <span
+                      className={cn(
+                        "rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.22em]",
+                        badgeClasses(item.tone)
+                      )}
+                    >
+                      {item.countLabel}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 space-y-2">
+                    <div className="text-sm font-semibold">{item.title}</div>
+                    <p className="text-xs leading-relaxed text-muted-foreground">{item.detail}</p>
+                  </div>
+
+                  <Button
+                    variant="ghost"
+                    className="mt-4 h-9 px-0 text-xs font-semibold"
+                    onClick={() => navigate(item.actionPath)}
+                  >
+                    {item.actionLabel}
+                    <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-dashed bg-muted/10 p-4 text-sm text-muted-foreground">
+            No urgent operational items are surfaced right now. NexusQ will keep updating this section as the workspace changes.
+          </div>
+        )}
 
         <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
           <div className="space-y-4">
@@ -166,7 +229,7 @@ export function DashboardAiAnalystPanel({
 
           <div className="space-y-4">
             <div className="rounded-2xl border bg-card p-5">
-              <div className="text-sm font-semibold">Ask About This Workspace</div>
+              <div className="text-sm font-semibold">Ask NexusQ About This Workspace</div>
               <p className="mt-2 text-sm text-muted-foreground">
                 Example questions: what deals were booked, which conversations stalled, what changed today, or which leads need follow-up.
               </p>
@@ -203,13 +266,13 @@ export function DashboardAiAnalystPanel({
 
             <div className="rounded-2xl border bg-card p-5">
               <div className="flex items-center justify-between gap-3">
-                <div className="text-sm font-semibold">Conversation Thread</div>
+                <div className="text-sm font-semibold">Latest NexusQ Exchange</div>
                 <div className="text-[11px] text-muted-foreground">Showing latest exchange only</div>
               </div>
               <div className="mt-4 space-y-3">
                 {!thread.length ? (
                   <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                    Ask a workspace question to start a grounded analysis thread.
+                    Ask a workspace question to start a grounded NexusQ analysis thread.
                   </div>
                 ) : null}
 
@@ -223,7 +286,7 @@ export function DashboardAiAnalystPanel({
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className="text-xs font-bold uppercase tracking-[0.22em] text-muted-foreground">
-                        {item.role === "assistant" ? "AI Analyst" : "You"}
+                        {item.role === "assistant" ? "NexusQ Analyst" : "You"}
                       </div>
                       <div className="text-[11px] text-muted-foreground">
                         {new Date(item.createdAt).toLocaleTimeString()}

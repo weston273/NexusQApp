@@ -2,6 +2,12 @@ import * as React from "react";
 import { useAuth } from "@/context/AuthProvider";
 import { getErrorMessage } from "@/lib/errors";
 import { askDashboardAiQuestion, fetchDashboardAiBriefing } from "@/features/dashboard/api";
+import {
+  buildDashboardFallbackAnswer,
+  buildDashboardFallbackBriefing,
+  isDashboardAiRateLimited,
+  type DashboardFallbackContext,
+} from "@/features/dashboard/fallbackAnalyst";
 import type { DashboardAiAnswer, DashboardAiBriefing, DashboardAiThreadItem } from "@/features/dashboard/types";
 
 function createThreadItem(
@@ -18,7 +24,7 @@ function createThreadItem(
   };
 }
 
-export function useDashboardAiAnalyst() {
+export function useDashboardAiAnalyst(fallbackContext: DashboardFallbackContext | null) {
   const { clientId } = useAuth();
   const [briefing, setBriefing] = React.useState<DashboardAiBriefing | null>(null);
   const [thread, setThread] = React.useState<DashboardAiThreadItem[]>([]);
@@ -42,11 +48,18 @@ export function useDashboardAiAnalyst() {
       setError(null);
       setLastLoadedAt(new Date());
     } catch (loadError) {
-      setError(getErrorMessage(loadError, "Failed to load AI workspace analysis."));
+      const message = getErrorMessage(loadError, "Failed to load AI workspace analysis.");
+      if (fallbackContext && isDashboardAiRateLimited(message)) {
+        setBriefing(buildDashboardFallbackBriefing(fallbackContext));
+        setError(null);
+        setLastLoadedAt(new Date());
+      } else {
+        setError(message);
+      }
     } finally {
       setLoading(false);
     }
-  }, [clientId]);
+  }, [clientId, fallbackContext]);
 
   React.useEffect(() => {
     setThread([]);
@@ -74,14 +87,22 @@ export function useDashboardAiAnalyst() {
         setError(null);
         return answer;
       } catch (askError) {
-        setError(getErrorMessage(askError, "Failed to answer your workspace question."));
+        const message = getErrorMessage(askError, "Failed to answer your workspace question.");
+        if (fallbackContext && isDashboardAiRateLimited(message)) {
+          const fallbackAnswer = buildDashboardFallbackAnswer(fallbackContext, trimmed);
+          const assistantTurn = createThreadItem("assistant", fallbackAnswer.answer, fallbackAnswer);
+          setThread((current) => [...current, assistantTurn]);
+          setError(null);
+          return fallbackAnswer;
+        }
+        setError(message);
         setThread((current) => current.filter((item) => item.id !== userTurn.id));
         return null;
       } finally {
         setAsking(false);
       }
     },
-    [clientId, thread]
+    [clientId, fallbackContext, thread]
   );
 
   return {
