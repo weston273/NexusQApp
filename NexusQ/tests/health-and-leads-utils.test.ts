@@ -68,20 +68,21 @@ test("automation health mapping derives a useful fallback error for degraded row
   assert.equal(services.length, 1);
   assert.equal(services[0]?.status, "degraded");
   assert.match(services[0]?.error ?? "", /degraded status/i);
+  assert.equal(services[0]?.name, "Health Monitoring");
 });
 
 test("workflow service upsert replaces an existing workflow snapshot without duplicating it", () => {
   const services = upsertWorkflowService(
     [
       {
-        name: "Workflow E",
+        name: "Health Monitoring",
         status: "unknown",
         last_run_at: null,
         minutes_since: null,
         error: "No health signal received yet.",
       },
       {
-        name: "Workflow B",
+        name: "First Response",
         status: "optimal",
         last_run_at: "2026-03-23T12:00:00.000Z",
         minutes_since: 0,
@@ -89,7 +90,7 @@ test("workflow service upsert replaces an existing workflow snapshot without dup
       },
     ],
     {
-      name: "Workflow E",
+      name: "Health Monitoring",
       status: "optimal",
       last_run_at: "2026-03-23T12:01:00.000Z",
       minutes_since: 0,
@@ -97,9 +98,9 @@ test("workflow service upsert replaces an existing workflow snapshot without dup
     }
   );
 
-  assert.equal(services.filter((service) => service.name === "Workflow E").length, 1);
-  assert.equal(services.find((service) => service.name === "Workflow E")?.status, "optimal");
-  assert.equal(services.find((service) => service.name === "Workflow B")?.status, "optimal");
+  assert.equal(services.filter((service) => service.name === "Health Monitoring").length, 1);
+  assert.equal(services.find((service) => service.name === "Health Monitoring")?.status, "optimal");
+  assert.equal(services.find((service) => service.name === "First Response")?.status, "optimal");
 });
 
 test("dashboard attention items surface stale quotes and missing value gaps", () => {

@@ -61,6 +61,7 @@ if (-not $SkipFunctionDeploy) {
   Invoke-SupabaseCli -Arguments @("functions", "deploy", "workflow-e-proxy", "--no-verify-jwt")
   Invoke-SupabaseCli -Arguments @("functions", "deploy", "workflow-f-agent", "--no-verify-jwt")
   Invoke-SupabaseCli -Arguments @("functions", "deploy", "client-ai-onboarding", "--no-verify-jwt")
+  Invoke-SupabaseCli -Arguments @("functions", "deploy", "dashboard-ai-briefing", "--no-verify-jwt")
   Invoke-SupabaseCli -Arguments @("functions", "deploy", "delete-lead", "--no-verify-jwt")
   Invoke-SupabaseCli -Arguments @("functions", "deploy", "notification-preferences", "--no-verify-jwt")
   Invoke-SupabaseCli -Arguments @("functions", "deploy", "notification-subscriptions", "--no-verify-jwt")

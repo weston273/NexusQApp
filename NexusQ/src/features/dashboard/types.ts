@@ -69,3 +69,36 @@ export type TodaySnapshot = {
   sourceLabel: string;
   asOfLabel: string;
 };
+
+export type DashboardAiRecommendedAction = {
+  title: string;
+  detail: string;
+  actionPath: string;
+  priority: "high" | "medium" | "low";
+};
+
+export type DashboardAiBriefing = {
+  headline: string;
+  summary: string;
+  situation: string;
+  opportunities: string[];
+  risks: string[];
+  recommendedActions: DashboardAiRecommendedAction[];
+  suggestedQuestions: string[];
+};
+
+export type DashboardAiAnswer = {
+  answer: string;
+  confidence: number;
+  evidence: string[];
+  followUps: string[];
+  referencedLeads: string[];
+};
+
+export type DashboardAiThreadItem = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+  answer?: DashboardAiAnswer | null;
+};

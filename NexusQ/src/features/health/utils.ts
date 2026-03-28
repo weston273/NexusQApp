@@ -25,8 +25,17 @@ import {
   type WorkflowKey,
 } from "@/features/health/types";
 
+const WORKFLOW_LABELS: Record<WorkflowKey, string> = {
+  A: "Lead Intake",
+  B: "First Response",
+  C: "Follow-Up",
+  D: "Pipeline",
+  E: "Health Monitoring",
+  F: "AI Conversations",
+};
+
 export function normalizeWorkflowName(key: WorkflowKey) {
-  return `Workflow ${key}`;
+  return WORKFLOW_LABELS[key];
 }
 
 export function upsertWorkflowService(
@@ -43,22 +52,51 @@ export function upsertWorkflowService(
 export function inferWorkflowKey(serviceName: string): WorkflowKey | null {
   const normalized = serviceName.toLowerCase().trim();
 
-  if (normalized.startsWith("a") || normalized.includes("workflow a") || normalized.includes("intake") || normalized.includes("normal")) {
+  if (
+    normalized.startsWith("a") ||
+    normalized.includes("workflow a") ||
+    normalized.includes("lead intake") ||
+    normalized.includes("intake") ||
+    normalized.includes("normal")
+  ) {
     return "A";
   }
-  if (normalized.startsWith("b") || normalized.includes("workflow b") || normalized.includes("speed") || normalized.includes("response")) {
+  if (
+    normalized.startsWith("b") ||
+    normalized.includes("workflow b") ||
+    normalized.includes("first response") ||
+    normalized.includes("speed") ||
+    normalized.includes("response")
+  ) {
     return "B";
   }
-  if (normalized.startsWith("c") || normalized.includes("workflow c") || normalized.includes("follow")) {
+  if (
+    normalized.startsWith("c") ||
+    normalized.includes("workflow c") ||
+    normalized.includes("follow-up") ||
+    normalized.includes("follow up") ||
+    normalized.includes("follow")
+  ) {
     return "C";
   }
   if (normalized.startsWith("d") || normalized.includes("workflow d") || normalized.includes("pipeline") || normalized.includes("booking")) {
     return "D";
   }
-  if (normalized.startsWith("e") || normalized.includes("workflow e") || normalized.includes("health")) {
+  if (
+    normalized.startsWith("e") ||
+    normalized.includes("workflow e") ||
+    normalized.includes("health monitoring") ||
+    normalized.includes("health")
+  ) {
     return "E";
   }
-  if (normalized.startsWith("f") || normalized.includes("workflow f") || normalized.includes("ai") || normalized.includes("conversation")) {
+  if (
+    normalized.startsWith("f") ||
+    normalized.includes("workflow f") ||
+    normalized.includes("ai conversations") ||
+    normalized.includes("ai") ||
+    normalized.includes("conversation")
+  ) {
     return "F" as WorkflowKey;
   }
 
@@ -156,22 +194,51 @@ export function staleSignalClasses(tone: "warning" | "danger") {
 export function pickHealthIcon(serviceName: string): LucideIcon {
   const normalized = serviceName.toLowerCase().trim();
 
-  if (normalized.startsWith("a") || normalized.includes("workflow a") || normalized.includes("intake") || normalized.includes("normal")) {
+  if (
+    normalized.startsWith("a") ||
+    normalized.includes("workflow a") ||
+    normalized.includes("lead intake") ||
+    normalized.includes("intake") ||
+    normalized.includes("normal")
+  ) {
     return ShieldCheck;
   }
-  if (normalized.startsWith("b") || normalized.includes("workflow b") || normalized.includes("speed") || normalized.includes("response")) {
+  if (
+    normalized.startsWith("b") ||
+    normalized.includes("workflow b") ||
+    normalized.includes("first response") ||
+    normalized.includes("speed") ||
+    normalized.includes("response")
+  ) {
     return Cpu;
   }
-  if (normalized.startsWith("c") || normalized.includes("workflow c") || normalized.includes("follow")) {
+  if (
+    normalized.startsWith("c") ||
+    normalized.includes("workflow c") ||
+    normalized.includes("follow-up") ||
+    normalized.includes("follow up") ||
+    normalized.includes("follow")
+  ) {
     return Globe;
   }
   if (normalized.startsWith("d") || normalized.includes("workflow d") || normalized.includes("pipeline") || normalized.includes("booking")) {
     return Database;
   }
-  if (normalized.startsWith("e") || normalized.includes("workflow e") || normalized.includes("health")) {
+  if (
+    normalized.startsWith("e") ||
+    normalized.includes("workflow e") ||
+    normalized.includes("health monitoring") ||
+    normalized.includes("health")
+  ) {
     return ShieldCheck;
   }
-  if (normalized.startsWith("f") || normalized.includes("workflow f") || normalized.includes("ai") || normalized.includes("conversation")) {
+  if (
+    normalized.startsWith("f") ||
+    normalized.includes("workflow f") ||
+    normalized.includes("ai conversations") ||
+    normalized.includes("ai") ||
+    normalized.includes("conversation")
+  ) {
     return Cpu;
   }
 

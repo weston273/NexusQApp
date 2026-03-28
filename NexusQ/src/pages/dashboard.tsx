@@ -4,16 +4,24 @@ import { ActionEmptyState, PageErrorState, PageLoadingState } from "@/components
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { DashboardActivityCard } from "@/features/dashboard/components/DashboardActivityCard";
+import { DashboardAiAnalystPanel } from "@/features/dashboard/components/DashboardAiAnalystPanel";
 import { DashboardAttentionPanel } from "@/features/dashboard/components/DashboardAttentionPanel";
 import { DashboardHero } from "@/features/dashboard/components/DashboardHero";
 import { DashboardMetricsSection } from "@/features/dashboard/components/DashboardMetricsSection";
 import { DashboardOverviewSection } from "@/features/dashboard/components/DashboardOverviewSection";
 import { DashboardPipelineSummary } from "@/features/dashboard/components/DashboardPipelineSummary";
+import { useDashboardAiAnalyst } from "@/features/dashboard/useDashboardAiAnalyst";
 import { useDashboardViewModel } from "@/features/dashboard/useDashboardViewModel";
 
 export function Dashboard() {
   const navigate = useNavigate();
   const viewModel = useDashboardViewModel();
+  const analyst = useDashboardAiAnalyst();
+
+  const handleRefresh = () => {
+    viewModel.refresh();
+    void analyst.refresh();
+  };
 
   if (viewModel.loading) {
     return <PageLoadingState title="Loading dashboard" description="Syncing pipeline, lead volume, and intelligence data." />;
@@ -38,7 +46,7 @@ export function Dashboard() {
             <Button variant="outline" size="sm" onClick={() => navigate("/intake")} className="gap-2 h-10" aria-label="Add a new lead">
               Add Lead <ArrowRight className="h-3.5 w-3.5" />
             </Button>
-            <Button size="sm" className="h-10" onClick={viewModel.refresh} aria-label="Refresh dashboard data">
+            <Button size="sm" className="h-10" onClick={handleRefresh} aria-label="Refresh dashboard data">
               Refresh
             </Button>
           </>
@@ -62,6 +70,17 @@ export function Dashboard() {
         onPrimaryAction={() => navigate(viewModel.intelligence.actionPath)}
       />
 
+      <DashboardAiAnalystPanel
+        briefing={analyst.briefing}
+        thread={analyst.thread}
+        loading={analyst.loading}
+        asking={analyst.asking}
+        error={analyst.error}
+        lastLoadedAt={analyst.lastLoadedAt}
+        onRefresh={analyst.refresh}
+        onAskQuestion={analyst.askQuestion}
+      />
+
       <DashboardAttentionPanel items={viewModel.attentionItems} />
 
       <DashboardPipelineSummary
@@ -83,7 +102,7 @@ export function Dashboard() {
           recentActivity={viewModel.recentActivity}
           onViewAll={() => navigate("/pipeline")}
           onAddLead={() => navigate("/intake")}
-          onRefresh={viewModel.refresh}
+          onRefresh={handleRefresh}
         />
       </div>
     </div>
