@@ -1,3 +1,4 @@
+import * as React from "react";
 import { ArrowRight, Settings } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { ActionEmptyState, PageErrorState, PageLoadingState } from "@/components/ui/data-state";
@@ -15,21 +16,12 @@ import { useDashboardViewModel } from "@/features/dashboard/useDashboardViewMode
 export function Dashboard() {
   const navigate = useNavigate();
   const viewModel = useDashboardViewModel();
-  const analyst = useDashboardAiAnalyst({
-    leads: viewModel.leads,
-    pipelineRows: viewModel.pipelineRows,
-    events: viewModel.events,
-    kpis: viewModel.kpis,
-    attentionItems: viewModel.attentionItems,
-    recentActivity: viewModel.recentActivity,
-    intelligence: viewModel.intelligence,
-    todaySnapshot: viewModel.todaySnapshot,
-  });
+  const analyst = useDashboardAiAnalyst();
+  const { refresh: refreshDashboard } = viewModel;
 
-  const handleRefresh = () => {
-    viewModel.refresh();
-    void analyst.refresh();
-  };
+  const handleRefresh = React.useCallback(() => {
+    refreshDashboard();
+  }, [refreshDashboard]);
 
   if (viewModel.loading) {
     return <PageLoadingState title="Loading dashboard" description="Syncing pipeline, lead volume, and intelligence data." />;
@@ -84,6 +76,7 @@ export function Dashboard() {
         thread={analyst.thread}
         loading={analyst.loading}
         asking={analyst.asking}
+        paused={analyst.paused}
         error={analyst.error}
         lastLoadedAt={analyst.lastLoadedAt}
         onRefresh={analyst.refresh}

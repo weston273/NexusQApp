@@ -14,6 +14,7 @@ type DashboardAiAnalystPanelProps = {
   thread: DashboardAiThreadItem[];
   loading: boolean;
   asking: boolean;
+  paused: boolean;
   error: string | null;
   lastLoadedAt: Date | null;
   onRefresh: () => void;
@@ -44,6 +45,7 @@ export function DashboardAiAnalystPanel({
   thread,
   loading,
   asking,
+  paused,
   error,
   lastLoadedAt,
   onRefresh,
@@ -87,7 +89,7 @@ export function DashboardAiAnalystPanel({
           </Button>
           <Button variant="outline" size="sm" className="h-9 gap-2" onClick={onRefresh} disabled={loading || asking}>
             <RefreshCcw className={cn("h-3.5 w-3.5", loading ? "animate-spin" : "")} />
-            Refresh Analysis
+            {paused ? "Retry Analysis" : "Refresh Analysis"}
           </Button>
         </div>
       </CardHeader>
@@ -238,6 +240,7 @@ export function DashboardAiAnalystPanel({
                 <Textarea
                   value={question}
                   onChange={(event) => setQuestion(event.target.value)}
+                  disabled={paused || loading}
                   placeholder="Ask about a lead, a deal, a conversation, or what changed in the system..."
                   className="min-h-[120px] resize-y"
                 />
@@ -250,17 +253,23 @@ export function DashboardAiAnalystPanel({
                         variant="outline"
                         size="sm"
                         className="h-8 text-xs"
+                        disabled={paused || loading}
                         onClick={() => setQuestion(item)}
                       >
                         {item}
                       </Button>
                     ))}
                   </div>
-                  <Button className="gap-2" onClick={submitQuestion} disabled={asking || !question.trim()}>
+                  <Button className="gap-2" onClick={submitQuestion} disabled={paused || loading || asking || !question.trim()}>
                     <Send className="h-3.5 w-3.5" />
-                    {asking ? "Thinking..." : "Ask"}
+                    {asking ? "Thinking..." : paused ? "Refresh To Resume" : "Ask"}
                   </Button>
                 </div>
+                {paused ? (
+                  <div className="rounded-xl border border-dashed border-border/70 bg-muted/10 p-3 text-xs text-muted-foreground">
+                    The analyst is paused after a failed AI request. The rest of the dashboard stays live while you retry from this panel.
+                  </div>
+                ) : null}
               </div>
             </div>
 
