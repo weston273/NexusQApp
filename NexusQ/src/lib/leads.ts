@@ -75,7 +75,23 @@ export function getNestedString(source: unknown, ...path: string[]) {
 }
 
 export function normalizeLeadStatus(value?: string | null) {
-  return (value ?? "new").toLowerCase().trim();
+  const normalized = (value ?? "new").toLowerCase().trim();
+
+  if (!normalized) return "new";
+  if (normalized === "new" || normalized === "qualifying" || normalized === "quoted" || normalized === "booked") {
+    return normalized;
+  }
+  if (normalized.includes("contact") || normalized.includes("inspect") || normalized.includes("schedule")) {
+    return "qualifying";
+  }
+  if (normalized.includes("quote") || normalized.includes("quoted") || normalized.includes("sent")) {
+    return "quoted";
+  }
+  if (normalized.includes("book") || normalized.includes("won") || normalized.includes("deal")) {
+    return "booked";
+  }
+
+  return normalized;
 }
 
 export function normalizePipelineStage(value?: string | null): PipelineStage {

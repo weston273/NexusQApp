@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { useAuth } from "@/context/AuthProvider";
+import { normalizeWorkflowName } from "@/features/health/utils";
 import { getAccessRoleLabel } from "@/lib/permissions";
 
 const principleCards = [
@@ -55,37 +56,37 @@ const processSteps = [
 const workflowCards = [
   {
     key: "A",
-    title: "Workflow A",
+    title: normalizeWorkflowName("A"),
     summary: "Captures and normalizes incoming lead requests into the right workspace.",
     icon: ShieldCheck,
   },
   {
     key: "B",
-    title: "Workflow B",
+    title: normalizeWorkflowName("B"),
     summary: "Handles fast first-response behavior so new leads hear back quickly.",
     icon: Inbox,
   },
   {
     key: "C",
-    title: "Workflow C",
+    title: normalizeWorkflowName("C"),
     summary: "Processes ongoing customer messaging and follow-up activity.",
     icon: Workflow,
   },
   {
     key: "D",
-    title: "Workflow D",
+    title: normalizeWorkflowName("D"),
     summary: "Moves leads through qualifying, quoted, and booked stages while preserving revenue value.",
     icon: BarChart3,
   },
   {
     key: "E",
-    title: "Workflow E",
+    title: normalizeWorkflowName("E"),
     summary: "Aggregates workflow health signals so operators can trust what the app is showing.",
     icon: Activity,
   },
   {
     key: "F",
-    title: "Workflow F",
+    title: normalizeWorkflowName("F"),
     summary: "Runs the AI SMS agent, uses client pricing and conversation memory, and advances pipeline stages when intent is clear.",
     icon: Workflow,
   },

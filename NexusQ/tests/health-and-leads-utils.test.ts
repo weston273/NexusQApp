@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   getEventSeverity,
   minutesBetween,
+  normalizeLeadStatus,
   normalizePipelineStage,
 } from "../src/lib/leads.ts";
 import {
@@ -16,6 +17,9 @@ import {
 import { buildAttentionItems } from "../src/features/dashboard/utils.ts";
 
 test("lead helpers normalize pipeline stages and event severity consistently", () => {
+  assert.equal(normalizeLeadStatus("contacted"), "qualifying");
+  assert.equal(normalizeLeadStatus("quote_sent"), "quoted");
+  assert.equal(normalizeLeadStatus("won_deal"), "booked");
   assert.equal(normalizePipelineStage("inspection_scheduled"), "qualifying");
   assert.equal(normalizePipelineStage("quote_sent"), "quoted");
   assert.equal(normalizePipelineStage("won_deal"), "booked");
